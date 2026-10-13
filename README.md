@@ -40,21 +40,15 @@ Anmeldung im Prototyp: beliebige gültige E-Mail und ein Passwort mit mindestens
 
 `npm run lint` und `npm run build` prüfen den Prototyp. Der Build bleibt in `frontend/dist` und wird noch nicht von PHP ausgeliefert.
 
-## Backend + Datenbank
-
-Voraussetzung: MySQL 8+ oder MariaDB 10.11+ (Hoster oder lokal). **Kein Docker.**
+## VPS-Installation (Test)
 
 ```bash
-cd backend
-cp .env.example .env   # Windows: copy .env.example .env
-# DB_* auf die Datenbank des Webspaces / lokale MySQL setzen
-php artisan key:generate
-php artisan migrate
-php artisan fs25:feed-fetch --url="https://HOST:PORT/feed/dedicated-server-stats.json?code=…"
-php artisan agrivision:update --check
+./scripts/install.sh --target /var/www/agrivision \
+  --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password '…' \
+  --app-url https://agrivision.example.com --migrate
 ```
 
-Deploy: [docs/DEPLOY-TEST.md](docs/DEPLOY-TEST.md). Updates: [docs/UPDATES.md](docs/UPDATES.md). Connector: [connector/PROBE.md](connector/PROBE.md).  
+Details: [docs/INSTALLATION.md](docs/INSTALLATION.md), [scripts/README.md](scripts/README.md). **Kein Docker.** Updates: [docs/UPDATES.md](docs/UPDATES.md). Connector: [connector/PROBE.md](connector/PROBE.md).  
 Repo: https://github.com/Pelessaria/AgriVision-FS25
 
 ## Dokumente

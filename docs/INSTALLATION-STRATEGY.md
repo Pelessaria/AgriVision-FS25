@@ -15,10 +15,11 @@ Geheimnisse verlassen die Installation nicht. Es gibt in Version 1 keinen zentra
 
 | Variante | Ziel | Pflicht in Version 1 |
 | --- | --- | --- |
-| Web-Installer aus dem öffentlichen GitHub-Repo / Release-ZIP | Shared Hosting, Upload per Dateimanager oder SFTP/FTPS | ja |
-| In-App-Update aus demselben Repo | laufende Installation auf dem Webspace | ja |
-| CLI `php artisan` | Entwicklung und Self-Hosting mit Shell | ja für Entwickler, nein für Shared Hosting |
-| Docker / Compose | | **nein** — nicht unterstützt |
+| `scripts/install.sh` auf VPS | Testserver / fortgeschrittenes Self-Hosting mit Shell | ja (aktueller Install-Pfad) |
+| In-App-Update aus demselben Repo | laufende Installation | ja |
+| Web-Installer (Browser) | Shared Hosting ohne Shell | später — derzeit nicht aktiv |
+| CLI `php artisan` | Entwicklung und Shell-Hosts | ja für Entwickler |
+| Docker / Compose / PowerShell-Installer | | **nein** — nicht unterstützt |
 | Grafischer Desktop-Installer | | nein, solange der Web-Installer führt |
 | Zentraler SaaS-Einrichtungsdienst | Menschen ohne eigenen Webspace | später, mit eigener Datenschutzbeschreibung |
 

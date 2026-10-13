@@ -1,65 +1,45 @@
 # Installation
 
-**Status:** Bedienschritte für einen Installer, den es noch nicht gibt. Nichts davon ist auf einem Webspace durchgespielt.  
-**Stand:** 12. Oktober 2026
+**Status:** VPS-Testpfad über `scripts/install.sh`. Web-Installer und PowerShell sind derzeit nicht aktiv.  
+**Stand:** 14. Oktober 2026
 
-Technische Begründung: [INSTALLATION-STRATEGY.md](INSTALLATION-STRATEGY.md). Webspace-Voraussetzungen: [SHARED-HOSTING.md](SHARED-HOSTING.md). Spielserver: [HOSTING-COMPATIBILITY.md](HOSTING-COMPATIBILITY.md).
+Technische Begründung: [INSTALLATION-STRATEGY.md](INSTALLATION-STRATEGY.md). Webspace: [SHARED-HOSTING.md](SHARED-HOSTING.md). Updates: [UPDATES.md](UPDATES.md).
 
-## 1. Was du vorher bereithältst
+## 1. VPS / Testserver (`install.sh`)
 
-- einen Webspace mit PHP 8.3 oder neuer und HTTPS
-- eine leere Datenbank, MariaDB 10.11+ oder MySQL 8.0+
-- Hostname, Datenbankname, Benutzer und Passwort aus dem Kundenlogin
-- den Anzeigenamen der Installation, falls er vom Vorschlag „FS25 Management Platform“ abweichen soll
+Voraussetzung: PHP 8.3+ mit den üblichen Laravel-Erweiterungen, `curl`, `unzip`, MySQL 8 oder MariaDB 10.11+.
 
-Du brauchst keine Shell und kein Docker.
+```bash
+# Von GitHub direkt:
+curl -fsSL https://raw.githubusercontent.com/Pelessaria/AgriVision-FS25/main/scripts/install.sh -o install.sh
+chmod +x install.sh
+./install.sh --target /var/www/agrivision \
+  --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password '…' \
+  --app-url https://agrivision.example.com --migrate
 
-## 2. Dateien hochladen
+# Oder aus einem Clone:
+git clone https://github.com/Pelessaria/AgriVision-FS25.git
+cd AgriVision-FS25
+./scripts/install.sh --skip-download --migrate \
+  --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password '…' \
+  --app-url https://agrivision.example.com
+```
 
-1. Lade das Release-ZIP herunter, sobald es veröffentlicht ist. In Phase 1 gibt es dieses ZIP noch nicht.
-2. Entpacke es auf deinem Rechner.
-3. Öffne im Hosting-Panel den Dateimanager oder verbinde dich per SFTP.
-4. Lege die Anwendungsdateien so ab, dass das Webroot auf den Ordner `public` zeigt. Wenn dein Hoster das Webroot nicht umstellen kann, folge dem Hinweis im Installer zur geschützten Ein-Verzeichnis-Variante. Der Installer prüft, ob sensible Dateien von außen unsichtbar sind.
-5. Lege die Datenbank im Panel an, falls noch keine existiert. Notiere den Server-Hostnamen. Er lautet oft nicht `localhost`.
+Schnelltest ohne Reverse-Proxy:
 
-## 3. Installer im Browser
+```bash
+cd /var/www/agrivision/backend
+php artisan serve --host=0.0.0.0 --port=8000
+```
 
-Öffne `https://deine-domain.example/install`.
+Document Root in Produktion: `backend/public`. Frontend-Build liegt unter `backend/public/app/` (aus dem Repo-`frontend/dist` oder via `--build-frontend`).
 
-1. Der Installer zeigt PHP-Version und fehlende Erweiterungen. Behebe fehlende Punkte im Panel und lade die Seite neu.
-2. Bestätige die HTTPS-Adresse.
-3. Wähle MariaDB oder MySQL, trage die Zugangsdaten ein und starte den Verbindungstest.
-4. Starte das Anlegen der Tabellen.
-5. Vergib Name, E-Mail und Passwort des Administrators. Es gibt kein vorausgefülltes Passwort.
-6. Trage den Anzeigenamen und die öffentliche URL ein.
-7. Lies die Abschlussseite. Der Installer ist danach nicht mehr erreichbar.
+## 2. Shared Hosting
 
-Wenn eine Meldung ohne technische Details erscheint, steht die ausführliche Ursache in `storage/logs` auf dem Server, ohne Datenbankpasswort.
+Weiterhin Zielbild (Upload + späterer Web-Installer). Aktuell zum Testen den VPS-Pfad nutzen. Details: [SHARED-HOSTING.md](SHARED-HOSTING.md).
 
-## 4. Danach im Control Center
+## 3. Nach der Installation
 
-1. Melde dich an.
-2. Lege einen Workspace für genau einen Spielserver an.
-3. Lade das Connector-ZIP herunter.
-4. Lade es im Panel des Spielhosters in den Mods-Ordner und aktiviere es. Entpacke es nicht, wenn der Server Archive erwartet.
-5. Starte den Spielserver über das Panel des Hosters neu.
-6. Wähle im Dashboard „Verbindung prüfen“.
-
-Kommt keine Verbindung zustande, bleibt der Workspace auf „nicht verbunden“. Die Karte zeigt keinen erfundenen Kontostand. Den weiteren Weg beschreibt der Assistent abhängig vom gewählten Hoster-Profil. Für GPORTAL, Nitrado und unbekannte Hoster ist das Profil derzeit ungeprüft.
-
-## 5. Updates
-
-1. Exportiere die Datenbank über das Panel oder `mysqldump` / `mariadb-dump`.
-2. Sichere den Ordner `storage` und die Datei `.env`.
-3. Ersetze die Anwendungsdateien durch das neue ZIP, ohne `.env` und ohne `storage/installed.lock` zu überschreiben.
-4. Melde dich als Administrator an und starte den angezeigten Migrationsschritt.
-
-## 6. Häufige Irrtümer
-
-| Beobachtung | Bedeutung |
-| --- | --- |
-| Installer verlangt PHP 8.3 | Im Panel die PHP-Version anheben. 8.2 ist zu alt |
-| Datenbanktest schlägt fehl | Hostnamen aus den Panel-Details verwenden, Passwort neu setzen, Rechte prüfen |
-| Seite zeigt den Ordner `vendor` im Browser | Webroot steht falsch oder die Schutzregeln fehlen. Installation nicht als fertig betrachten |
-| Workspace bleibt offline | Mod nicht aktiv, Server nicht neu gestartet, oder `modSettings` ist über den Dateizugang nicht sichtbar |
-| Zahlen fehlen | der Connector hat sie nicht gemeldet. Die Oberfläche zeigt „nicht verfügbar“ |
+1. Workspace für einen Spielserver anlegen (UI / später API).
+2. Connector-ZIP: `connector/dist/FS25_AgriVisionConnector.zip` — Probe: [connector/PROBE.md](../connector/PROBE.md).
+3. Updates: Einstellungen → Update oder `php artisan agrivision:update --apply`.

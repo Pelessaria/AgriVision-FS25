@@ -11,15 +11,15 @@ Kurzleitfaden für AgriVision auf **Webspace / lokalem PHP + MySQL oder MariaDB*
 
 Siehe [SHARED-HOSTING.md](SHARED-HOSTING.md) und [UPDATES.md](UPDATES.md).
 
-## 2. Backend lokal gegen eine Hoster- oder lokale DB
+## 2. VPS / lokaler Server
 
 ```bash
-cd backend
-cp .env.example .env   # Windows: copy .env.example .env
-# DB_* auf die MySQL/MariaDB des Webspaces oder eine lokale Instanz setzen
-php artisan key:generate
-php artisan migrate
+./scripts/install.sh --skip-download --migrate \
+  --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password '…' \
+  --app-url http://127.0.0.1:8000
 ```
+
+Oder manuell in `backend/`: `.env` setzen, `php artisan key:generate`, `php artisan migrate`.
 
 ## 3. Feed-Abfrage (Gameserver Web-API)
 
