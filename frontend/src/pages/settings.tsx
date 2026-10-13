@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
-import { Camera, ShieldCheck } from "lucide-react"
+import { Camera, RefreshCw, ShieldCheck } from "lucide-react"
+import {
+  applyUpdate,
+  checkForUpdates,
+  formatSha,
+  GITHUB_REPO_URL,
+  type UpdateStatus,
+} from "../github-update"
 import { i18n } from "../i18n"
 import { useStore } from "../store"
 import type { MailEncryption, MailSettings } from "../types"
 import { isEmail } from "../validate"
+import { MANAGEMENT_VERSION } from "../version"
 
-type SettingsTab = "profile" | "general" | "mail"
+type SettingsTab = "profile" | "general" | "update" | "mail"
 
 function chooseLocale(lng: "de" | "en") {
   void i18n.changeLanguage(lng)
@@ -48,6 +56,17 @@ export function SettingsPage() {
   const [mailError, setMailError] = useState("")
   const [mailTesting, setMailTesting] = useState(false)
 
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
+  const [updateChecking, setUpdateChecking] = useState(false)
+  const [updateApplying, setUpdateApplying] = useState(false)
+  const [demoInstalledSha] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem("agrivision.installedSha")
+    } catch {
+      return null
+    }
+  })
+
   useEffect(() => {
     if (!actor) return
     setFirstName(actor.firstName)
@@ -63,8 +82,57 @@ export function SettingsPage() {
   }, [store.mailSettings])
 
   useEffect(() => {
-    if (tab === "mail" && !isAdmin) setTab("profile")
+    if ((tab === "mail" || tab === "update") && !isAdmin) setTab("profile")
   }, [isAdmin, tab])
+
+  async function runUpdateCheck() {
+    setUpdateChecking(true)
+    const status = await checkForUpdates(MANAGEMENT_VERSION, demoInstalledSha)
+    setUpdateStatus(status)
+    setUpdateChecking(false)
+    if (status.error) {
+      store.pushToast("warn", t("settings.updateCheckFailed", { error: status.error }))
+    }
+  }
+
+  useEffect(() => {
+    if (tab !== "update" || !isAdmin) return
+    let cancelled = false
+    setUpdateChecking(true)
+    void checkForUpdates(MANAGEMENT_VERSION, demoInstalledSha).then((status) => {
+      if (cancelled) return
+      setUpdateStatus(status)
+      setUpdateChecking(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [tab, isAdmin, demoInstalledSha])
+
+  async function runUpdateApply() {
+    if (!updateStatus?.updateAvailable) return
+    if (!window.confirm(t("settings.updateConfirm"))) return
+    setUpdateApplying(true)
+    const result = await applyUpdate(updateStatus.remoteSha)
+    setUpdateApplying(false)
+    if (!result.ok) {
+      if (result.error === "backend_unavailable") {
+        store.pushToast("warn", t("settings.updateBackendMissing"))
+        return
+      }
+      store.pushToast("warn", t("settings.updateFailed", { error: result.error ?? "—" }))
+      return
+    }
+    if (updateStatus.remoteSha) {
+      try {
+        localStorage.setItem("agrivision.installedSha", updateStatus.remoteSha)
+      } catch {
+        /* ignore */
+      }
+    }
+    store.pushToast("ok", t("settings.updateApplied"))
+    await runUpdateCheck()
+  }
 
   function onAvatar(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
@@ -187,6 +255,17 @@ export function SettingsPage() {
           >
             {t("settings.tabGeneral")}
           </button>
+          {isAdmin ? (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === "update"}
+              className={tab === "update" ? "access-tab active" : "access-tab"}
+              onClick={() => setTab("update")}
+            >
+              {t("settings.tabUpdate")}
+            </button>
+          ) : null}
           {isAdmin ? (
             <button
               type="button"
@@ -390,6 +469,90 @@ export function SettingsPage() {
             </label>
           </section>
         </div>
+      ) : null}
+
+      {tab === "update" && isAdmin ? (
+        <section className="panel settings-card">
+          <div className="settings-card-head">
+            <h2>{t("settings.updateTitle")}</h2>
+            <p className="hint">{t("settings.updateLead")}</p>
+          </div>
+
+          <div className="update-meta">
+            <div className="update-meta-row">
+              <span className="faint">{t("settings.updateCurrent")}</span>
+              <strong>{MANAGEMENT_VERSION}</strong>
+            </div>
+            <div className="update-meta-row">
+              <span className="faint">{t("settings.updateRepo")}</span>
+              <a href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">
+                {updateStatus?.repo ?? "Pelessaria/AgriVision-FS25"}
+              </a>
+            </div>
+            <div className="update-meta-row">
+              <span className="faint">{t("settings.updateBranch")}</span>
+              <strong>{updateStatus?.branch ?? "main"}</strong>
+            </div>
+            <div className="update-meta-row">
+              <span className="faint">{t("settings.updateInstalledSha")}</span>
+              <code>{formatSha(updateStatus?.installedSha ?? demoInstalledSha)}</code>
+            </div>
+            <div className="update-meta-row">
+              <span className="faint">{t("settings.updateRemoteSha")}</span>
+              <code>{formatSha(updateStatus?.remoteSha)}</code>
+            </div>
+            {updateStatus?.remoteMessage ? (
+              <div className="update-meta-row">
+                <span className="faint">{t("settings.updateRemoteMessage")}</span>
+                <span>{updateStatus.remoteMessage}</span>
+              </div>
+            ) : null}
+          </div>
+
+          {updateStatus ? (
+            <p className={updateStatus.updateAvailable ? "access-note update-note-warn" : "access-note"}>
+              <RefreshCw className="icon inline-icon" aria-hidden="true" />
+              {updateStatus.updateAvailable ? t("settings.updateAvailable") : t("settings.updateCurrentOk")}
+              {" · "}
+              {updateStatus.source === "api"
+                ? t("settings.updateSourceApi")
+                : updateStatus.source === "github"
+                  ? t("settings.updateSourceGithub")
+                  : t("settings.updateSourceDemo")}
+            </p>
+          ) : null}
+
+          {updateStatus?.source !== "api" ? (
+            <p className="hint">{t("settings.updateApplyDemo")}</p>
+          ) : null}
+
+          <div className="setting-actions">
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={updateChecking || updateApplying}
+              onClick={() => void runUpdateCheck()}
+            >
+              {updateChecking ? t("settings.updateChecking") : t("settings.updateCheck")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={
+                updateChecking ||
+                updateApplying ||
+                !updateStatus?.updateAvailable ||
+                updateStatus.source !== "api"
+              }
+              onClick={() => void runUpdateApply()}
+            >
+              {updateApplying ? t("settings.updateApplying") : t("settings.updateApply")}
+            </button>
+            <a className="btn btn-ghost" href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">
+              {t("settings.updateOpenRepo")}
+            </a>
+          </div>
+        </section>
       ) : null}
 
       {tab === "mail" && isAdmin ? (

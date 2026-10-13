@@ -16,7 +16,7 @@ frontend/.env
 frontend/.env.*
 
 # Build / runtime
-frontend/dist/
+# frontend/dist is tracked so shared-hosting updates from GitHub include the UI
 backend/public/build/
 backend/public/hot
 backend/storage/*.key

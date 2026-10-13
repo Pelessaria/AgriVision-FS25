@@ -6,11 +6,15 @@ Dieses Protokoll folgt [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ### Hinzugefügt
 
-- Planungsstand Phase 1 vom 12. Oktober 2026: Architektur, Datenmodell, Sicherheit, FS25-Schnittstellen, Hosting, Datenbanken, Internationalisierung, Plugin-Grenzen, Installationsstrategie und UX-Richtung.
-- Nachtrag derselben Phase: nur lesende Dedicated-Server-Web-API als erster Datenkanal, `modSettings` als üblicher FTP-Pfad, Web-Login des Testservers nicht bestätigt. Keine Zugangsdaten im Repository.
-- Arbeitstitel „FS25 Management Platform“. Der Anzeigename bleibt konfigurierbar.
-- Phase-2-Prototyp in `frontend/`: Graphit-Oberfläche, Deutsch und Englisch, Demo-Daten mit Kennzeichnung. Kein Backend und keine Zugangsdaten.
+- Laravel-Backend mit Feed-Client (`fs25:feed-fetch`), Workspace-Migration und In-App-Updater aus GitHub (`agrivision:update`, `/api/system/update`).
+- Einstellungen → Update in der UI; Docs `UPDATES.md`, Deploy ohne Docker.
+- Connector-Mod v0 inkl. Probe-Paket.
+- Phase-2-Prototyp in `frontend/` (AgriVision-UI).
+
+### Geändert
+
+- Docker / Compose entfällt als Betriebsart. Ziel bleibt Shared Hosting über GitHub-Repo und späteren Installer.
 
 ### Noch nicht vorhanden
 
-- Laravel-Anwendung, Datenbankmigrationen, Installer, Connector-Mod und automatisierte Fachtests.
+- Web-Installer, Realm-Admin-Auth am Update-Endpoint, vollständige API-Anbindung des Frontends.

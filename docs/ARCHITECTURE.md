@@ -20,7 +20,7 @@ Spielwerte in der Produktivansicht stammen aus diesen Übertragungen. Fehlende W
 
 ### 3.1 Verbindliche Randbedingungen
 
-- Shared Hosting muss ohne Root, ohne Docker und ohne dauerhaften Node-Prozess funktionieren.
+- Shared Hosting muss ohne Root, ohne Docker und ohne dauerhaften Node-Prozess funktionieren. Docker ist keine unterstützte Betriebsart.
 - Cron ist nicht überall vorhanden. Bei STRATO ist Cron auf der neuen Plattform laut Anbieter-FAQ nicht verfügbar ([STRATO Cron](https://www.strato.de/faq/hosting/so-einfach-richten-sie-ihre-cron-jobs-ein/), abgerufen 12. Oktober 2026).
 - MariaDB und MySQL müssen beide tragen.
 - Der Spielserver darf keine eingehenden Ports für das Dashboard brauchen.
@@ -184,7 +184,7 @@ Geplant, noch nicht angelegt:
 │   └── api.php
 ├── connector/                   # FS25-Mod-Quellen, ohne Geheimnisse
 ├── bridge/                      # optionales lokales Programm
-├── docker/                      # optionales Compose für Self-Hosting
+├── (kein docker/)               # Docker bewusst nicht unterstützt
 ├── tests/
 │   ├── Unit/
 │   ├── Feature/

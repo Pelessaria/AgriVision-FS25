@@ -1,31 +1,23 @@
 # Deploy-Test (Backend + Datenbank)
 
-Kurzleitfaden, um AgriVision mit MySQL/MariaDB auf einem Webserver oder lokal gegen Docker zu testen. Keine Feed-Codes oder Passwörter in dieses Dokument schreiben.
+Kurzleitfaden für AgriVision auf **Webspace / lokalem PHP + MySQL oder MariaDB**. Kein Docker. Keine Feed-Codes oder Passwörter in dieses Dokument schreiben.
 
 ## 1. Voraussetzungen
 
-- PHP 8.3+ mit `pdo_mysql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `fileinfo`
-- Composer 2
-- Node 20+ (Frontend)
-- Docker (optional, lokale DB) **oder** leere MySQL 8.0/8.4 bzw. MariaDB 10.11+ Datenbank beim Hoster
+- PHP 8.3+ mit `pdo_mysql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `fileinfo`, `curl`, `zip`
+- Composer 2 (nur zum Bauen des Release-Pakets oder lokal)
+- Node 20+ (nur zum Bauen des Frontends)
+- Leere MySQL 8.0/8.4 bzw. MariaDB 10.11+ Datenbank beim Hoster (oder lokal)
 
-## 2. Lokale Datenbank (Docker)
+Siehe [SHARED-HOSTING.md](SHARED-HOSTING.md) und [UPDATES.md](UPDATES.md).
 
-```bash
-# MySQL 8.4 auf Port 3306
-docker compose --profile mysql up -d
-
-# oder MariaDB 10.11 auf Port 3307
-docker compose --profile mariadb up -d
-```
-
-Warten bis der Healthcheck grün ist, dann:
+## 2. Backend lokal gegen eine Hoster- oder lokale DB
 
 ```bash
 cd backend
-copy .env.example .env   # Windows; auf Linux: cp .env.example .env
+cp .env.example .env   # Windows: copy .env.example .env
+# DB_* auf die MySQL/MariaDB des Webspaces oder eine lokale Instanz setzen
 php artisan key:generate
-# Bei MariaDB-Profil: DB_CONNECTION=mariadb, DB_PORT=3307 in .env setzen
 php artisan migrate
 ```
 
@@ -35,34 +27,18 @@ Nur serverseitig. Der Feed-Code gehört ausschließlich in `.env` oder in die ve
 
 ```bash
 cd backend
-
-# Einmalig gegen einen laufenden Dedicated Server:
 php artisan fs25:feed-fetch --url="https://HOST:PORT/feed/dedicated-server-stats.json?code=…" --out=feed/last-snapshot.json
-
-# Oder über Env:
-# FS25_FEED_BASE=https://HOST:PORT
-# FS25_FEED_CODE=…
-php artisan fs25:feed-fetch --out=feed/last-snapshot.json
 ```
 
-Optional Map-JPEG und Workspace-Update:
+## 4. Webspace
 
-```bash
-php artisan fs25:feed-fetch --url="…" --map=feed/map.jpg --workspace=<public_id>
-```
+1. Release aus dem GitHub-Repo (Installer zieht Repo/Release-ZIP) so ablegen, dass das Document Root auf `public/` zeigt.
+2. `.env` auf dem Server anlegen (nicht aus dem Repo). `APP_KEY`, DB-Zugangsdaten, optional `FS25_FEED_*`.
+3. Migrationen: Web-Installer oder `php artisan migrate --force`.
+4. Frontend-Build liegt im Release unter dem vom Installer vorgesehenen Pfad (bzw. `public/app` nach Update).
+5. Updates danach über Einstellungen → Update oder `php artisan agrivision:update --apply`.
 
-Die Konsole und die JSON-Zusammenfassung enthalten den Feed-Code nicht.
-
-## 4. Webserver / Shared Hosting
-
-1. `backend/` so deployen, dass das Document Root auf `backend/public` zeigt.
-2. `vendor/` per `composer install --no-dev --optimize-autoloader` erzeugen (oder Release-Artefakt).
-3. `.env` auf dem Server anlegen (nicht aus dem Repo). `APP_KEY`, DB-Zugangsdaten, optional `FS25_FEED_*`.
-4. `php artisan migrate --force`
-5. Cron / Task Scheduler (später): `* * * * * php artisan schedule:run` — Feed-Jobs hängen dort an.
-6. Frontend: `cd frontend && npm ci && npm run build` — Build nach Bedarf unter `public` oder als separates Static-Hosting ausliefern.
-
-Rechte: `storage/` und `bootstrap/cache/` schreibbar für den PHP-User.
+Rechte: `storage/` und `bootstrap/cache/` schreibbar für den PHP-User. Outbound HTTPS zum GitHub-API für Updates.
 
 ## 5. Connector-Mod (parallel)
 
@@ -73,13 +49,13 @@ Siehe `connector/PROBE.md`. ZIP: `connector/dist/FS25_AgriVisionConnector.zip`.
 | # | Check |
 | --- | --- |
 | 1 | `php artisan migrate` ohne Fehler |
-| 2 | `php artisan fs25:feed-fetch …` liefert Tabelle mit `linkState=online` |
-| 3 | `storage/app/feed/last-snapshot.json` ohne `code`-Feld |
-| 4 | Frontend-Build lokal erreichbar |
-| 5 | Connector-Probe auf dem Spielserver (hello.xml / vehicles_full) |
+| 2 | `php artisan fs25:feed-fetch …` liefert `linkState=online` |
+| 3 | `php artisan agrivision:update --check` erreicht GitHub |
+| 4 | `GET /api/system/update` antwortet JSON |
+| 5 | Connector-Probe auf dem Spielserver |
 
 ## 7. Sicherheit
 
 - Feed-Code und DB-Passwort nie committen
-- HTTPS zum Feed bevorzugen, wenn der Hoster es anbietet
+- Update-Endpoint später nur für Realm-Admin
 - Keine Secrets in Issues, Logs oder Chat-Antworten

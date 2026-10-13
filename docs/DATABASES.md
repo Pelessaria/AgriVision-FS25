@@ -1,6 +1,6 @@
 # Datenbanken
 
-**Status:** MySQL/MariaDB-Ziele festgelegt. Workspace-Migration und `docker-compose` Profile sind vorhanden; Deploy-Test: [DEPLOY-TEST.md](DEPLOY-TEST.md).  
+**Status:** MySQL/MariaDB-Ziele festgelegt. Workspace-Migration vorhanden. Betrieb nur über Hoster-/lokale DB — kein Docker. Deploy-Test: [DEPLOY-TEST.md](DEPLOY-TEST.md).  
 **Stand:** 14. Oktober 2026
 
 ## 1. Unterstützte Versionen

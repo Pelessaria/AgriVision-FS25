@@ -8,9 +8,9 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
 dist-ssr
 *.local
+# dist/ is committed for webspace installs / in-app GitHub updates (no Node on host)
 
 # Editor directories and files
 .vscode/*

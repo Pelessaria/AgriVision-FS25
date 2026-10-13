@@ -1,7 +1,7 @@
 # Installationsstrategie
 
-**Status:** Plan. Der Installer existiert noch nicht.  
-**Stand:** 12. Oktober 2026
+**Status:** Plan. Der Installer existiert noch nicht; In-App-Update aus GitHub ist vorhanden.  
+**Stand:** 14. Oktober 2026
 
 Bedienschritte für spätere Nutzer stehen gesammelt in [INSTALLATION.md](INSTALLATION.md). Dieses Dokument begründet die Varianten.
 
@@ -15,13 +15,14 @@ Geheimnisse verlassen die Installation nicht. Es gibt in Version 1 keinen zentra
 
 | Variante | Ziel | Pflicht in Version 1 |
 | --- | --- | --- |
-| Web-Installer im Release-ZIP | Shared Hosting, Upload per Dateimanager oder SFTP/FTPS | ja |
-| Dieselbe Anwendung per Docker Compose | eigener VPS | optional, gleiche Migrationen |
+| Web-Installer aus dem öffentlichen GitHub-Repo / Release-ZIP | Shared Hosting, Upload per Dateimanager oder SFTP/FTPS | ja |
+| In-App-Update aus demselben Repo | laufende Installation auf dem Webspace | ja |
 | CLI `php artisan` | Entwicklung und Self-Hosting mit Shell | ja für Entwickler, nein für Shared Hosting |
+| Docker / Compose | | **nein** — nicht unterstützt |
 | Grafischer Desktop-Installer | | nein, solange der Web-Installer führt |
 | Zentraler SaaS-Einrichtungsdienst | Menschen ohne eigenen Webspace | später, mit eigener Datenschutzbeschreibung |
 
-Der optionale Compose-Pfad benutzt dasselbe `public/`, dieselben Migrationen und denselben Installer- oder einen gleichwertigen Erststart. Er wird nicht zur einzigen dokumentierten Methode.
+Docker ist keine Option. Jede Installation muss auf typischem Webspace ohne Root, ohne Shell und ohne Container laufen können.
 
 ## 3. Release-Paket
 
@@ -65,9 +66,14 @@ Wenn ein Schritt auf dem konkreten Hoster nicht automatisierbar ist, zeigt der I
 
 ## 6. Updates
 
-Ein Update ist ein neues ZIP über die Anwendungsdateien, ohne `.env`, ohne `storage/installed.lock` und ohne hochgeladene Icons zu überschreiben. Danach führt ein geschützter Wartungsaufruf die Migrationen aus. Der Aufruf verlangt eine angemeldete Realm-Admin-Sitzung und eine Bestätigung.
+Führend: In-App-Update aus dem öffentlichen GitHub-Repository (Zipball des konfigurierten Zweigs). Details: [UPDATES.md](UPDATES.md).
 
-Vor dem Update wird ein Datenbankexport erstellt. Siehe [BACKUP-RESTORE.md](BACKUP-RESTORE.md).
+- `.env`, `storage/` und das lokale `vendor/` bleiben erhalten.
+- Migrationen laufen nach dem Overlay automatisch.
+- Die UI liegt unter Einstellungen → Update; CLI: `php artisan agrivision:update`.
+- Realm-Admin-Auth am Endpoint folgt mit dem Installer; bis dahin ist `confirm=true` Pflicht.
+
+Alternativ bleibt ein manuelles Release-ZIP möglich (ohne `.env` / `storage/installed.lock` zu überschreiben). Vor größeren Updates: Datenbankexport — siehe [BACKUP-RESTORE.md](BACKUP-RESTORE.md).
 
 ## 7. Connector auf dem Spielserver
 
