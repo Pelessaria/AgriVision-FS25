@@ -10,18 +10,18 @@ Technische Begründung: [INSTALLATION-STRATEGY.md](INSTALLATION-STRATEGY.md). We
 Voraussetzung: PHP 8.3+ mit den üblichen Laravel-Erweiterungen, `curl`, `unzip`, MySQL 8 oder MariaDB 10.11+.
 
 ```bash
-# Von GitHub direkt:
-curl -fsSL https://raw.githubusercontent.com/Pelessaria/AgriVision-FS25/main/scripts/install.sh -o install.sh
+# Von GitHub (jsDelivr — raw.githubusercontent.com/main kann verzögert cachen):
+curl -fsSL https://cdn.jsdelivr.net/gh/Pelessaria/AgriVision-FS25@main/scripts/install.sh -o install.sh
 chmod +x install.sh
 ./install.sh --target /var/www/agrivision \
-  --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password '…' \
+  --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password 'secret' \
   --app-url https://agrivision.example.com --migrate
 
 # Oder aus einem Clone:
 git clone https://github.com/Pelessaria/AgriVision-FS25.git
 cd AgriVision-FS25
 ./scripts/install.sh --skip-download --migrate \
-  --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password '…' \
+  --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password 'secret' \
   --app-url https://agrivision.example.com
 ```
 

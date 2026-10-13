@@ -2,8 +2,8 @@
 # AgriVision VPS install script (testing / advanced self-hosting)
 # No Docker. No PowerShell. No web installer.
 #
-# Example:
-#   curl -fsSL https://raw.githubusercontent.com/Pelessaria/AgriVision-FS25/main/scripts/install.sh -o install.sh
+# Example (prefer jsDelivr; raw.githubusercontent.com/main may cache stale files):
+#   curl -fsSL https://cdn.jsdelivr.net/gh/Pelessaria/AgriVision-FS25@main/scripts/install.sh -o install.sh
 #   chmod +x install.sh
 #   ./install.sh --target /var/www/agrivision \
 #     --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password 'secret' \
