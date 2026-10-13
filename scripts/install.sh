@@ -1,22 +1,17 @@
 #!/usr/bin/env bash
-# AgriVision — VPS install script (testing / advanced self-hosting)
+# AgriVision VPS install script (testing / advanced self-hosting)
+# No Docker. No PowerShell. No web installer.
 #
-# No Docker. No PowerShell. Web installer not used.
-# Pulls the public GitHub repo, installs Composer deps, prepares Laravel, migrates.
-#
-# Quick start on a fresh Ubuntu/Debian VPS (example):
-#   sudo apt update && sudo apt install -y php8.3-cli php8.3-mysql php8.3-xml \
-#     php8.3-mbstring php8.3-curl php8.3-zip php8.3-sqlite3 unzip curl git mysql-client
+# Example:
 #   curl -fsSL https://raw.githubusercontent.com/Pelessaria/AgriVision-FS25/main/scripts/install.sh -o install.sh
 #   chmod +x install.sh
 #   ./install.sh --target /var/www/agrivision \
-#     --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password '…' \
+#     --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password 'secret' \
 #     --app-url https://agrivision.example.com --migrate
 #
-# Or from a git clone:
-#   git clone https://github.com/Pelessaria/AgriVision-FS25.git
-#   cd AgriVision-FS25
-#   ./scripts/install.sh --skip-download --migrate --db-host … --db-name … --db-user … --db-password '…'
+# From a git clone:
+#   ./scripts/install.sh --skip-download --migrate \
+#     --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password 'secret'
 
 set -euo pipefail
 
@@ -45,7 +40,7 @@ Usage:
   ./scripts/install.sh [options]
 
 Options:
-  --target DIR          Install into DIR (default: parent of scripts/, or cwd when piped)
+  --target DIR          Install into DIR
   --skip-download       Use existing tree (git clone already present)
   --branch NAME         Git branch (default: main)
   --owner NAME          GitHub owner (default: Pelessaria)
@@ -55,50 +50,47 @@ Options:
   --db-name NAME        Database name
   --db-user USER        Database user
   --db-password PASS    Database password
-  --db-connection NAME  mysql|mariadb (default: mysql)
+  --db-connection NAME  mysql or mariadb (default: mysql)
   --app-url URL         APP_URL (default: http://127.0.0.1:8000)
   --app-name NAME       APP_NAME (default: AgriVision)
   --migrate             Run php artisan migrate --force
-  --build-frontend      Run npm ci && npm run build in frontend/ (needs Node 20+)
+  --build-frontend      Run npm ci && npm run build (needs Node 20+)
   -h, --help            Show this help
-
-After install, point the webserver document root at backend/public
-or for a quick test: cd backend && php artisan serve
 EOF
 }
 
-log() { printf '\n==> %s\n' "$*"; }
-die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+log() {
+  printf '\n==> %s\n' "$*"
+}
+
+die() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing command: $1"
 }
 
+# Always write KEY="value" (escaped). Uses awk ENVIRON to avoid quote/sed pitfalls.
 set_env_key() {
-  local file="$1" key="$2" value="$3"
-  local formatted needs_quotes=0
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local escaped line tmp
 
-  # Quote values that would break bare KEY=value lines (avoid backticks in [[ ]]).
-  if [[ -z "$value" ]]; then
-    needs_quotes=1
-  elif printf '%s' "$value" | grep -qE '[[:space:]#"'"'"'\\$]'; then
-    needs_quotes=1
-  fi
+  escaped=$(printf '%s' "$value" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+  line="${key}=\"${escaped}\""
+  tmp=$(mktemp)
 
-  if [[ "$needs_quotes" -eq 1 ]]; then
-    formatted="\"$(printf '%s' "$value" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')\""
-  else
-    formatted="$value"
-  fi
+  KEY="$key" LINE="$line" awk '
+    BEGIN { k = ENVIRON["KEY"]; line = ENVIRON["LINE"]; done = 0 }
+    index($0, k "=") == 1 { print line; done = 1; next }
+    { print }
+    END { if (!done) print line }
+  ' "$file" >"$tmp"
 
-  if grep -qE "^${key}=" "$file"; then
-    local repl
-    repl=$(printf '%s' "$formatted" | sed -e 's/|/\\|/g')
-    sed -i.bak -e "s|^${key}=.*|${key}=${repl}|" "$file"
-  else
-    printf '%s=%s\n' "$key" "$formatted" >>"$file"
-  fi
-  rm -f "${file}.bak"
+  mv "$tmp" "$file"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -136,7 +128,7 @@ fi
 
 BACKEND="${ROOT}/backend"
 
-log "AgriVision install → ${ROOT}"
+log "AgriVision install -> ${ROOT}"
 need_cmd "$PHP_BIN"
 need_cmd curl
 need_cmd unzip
@@ -160,7 +152,6 @@ if [[ "$SKIP_DOWNLOAD" -eq 0 ]]; then
   EXTRACTED="$(find "$WORK" -maxdepth 1 -type d -name "${REPO}-*" | head -n1)"
   [[ -n "$EXTRACTED" ]] || die "Extracted repo folder not found"
   mkdir -p "$ROOT"
-  # Preserve existing .env if re-running into same target
   if [[ -f "${BACKEND}/.env" ]]; then
     cp "${BACKEND}/.env" "${WORK}/.env.preserve"
   fi
@@ -190,7 +181,7 @@ if [[ ! -f vendor/autoload.php ]]; then
     "$PHP_BIN" composer.phar install --no-dev --optimize-autoloader --no-interaction
   fi
 else
-  echo "vendor/ already present — skipping composer install"
+  echo "vendor/ already present - skipping composer install"
 fi
 
 if [[ ! -f .env ]]; then
@@ -217,7 +208,8 @@ log "Application key"
 "$PHP_BIN" artisan key:generate --force
 
 log "Writable dirs"
-mkdir -p storage/framework/{cache,sessions,views} storage/logs storage/app/public bootstrap/cache
+mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views
+mkdir -p storage/logs storage/app/public bootstrap/cache
 chmod -R ug+rwx storage bootstrap/cache || true
 
 if [[ "$BUILD_FRONTEND" -eq 1 ]]; then
@@ -232,9 +224,8 @@ if [[ "$BUILD_FRONTEND" -eq 1 ]]; then
   cp -a "${ROOT}/frontend/dist/." "${BACKEND}/public/app/"
 fi
 
-# Ship committed dist into public/app when present and not already copied
 if [[ -d "${ROOT}/frontend/dist" && ! -f "${BACKEND}/public/app/index.html" ]]; then
-  log "Copying frontend/dist → backend/public/app"
+  log "Copying frontend/dist -> backend/public/app"
   mkdir -p "${BACKEND}/public/app"
   cp -a "${ROOT}/frontend/dist/." "${BACKEND}/public/app/"
 fi
@@ -246,17 +237,19 @@ if [[ "$MIGRATE" -eq 1 ]]; then
   "$PHP_BIN" artisan migrate --force
 fi
 
-# Mark install for the in-app updater (optional SHA from GitHub)
 if [[ -d "${ROOT}/.git" ]] && command -v git >/dev/null 2>&1; then
   SHA="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
 else
   SHA=""
 fi
 mkdir -p storage/app
-printf '{\n  "sha": %s,\n  "installedAt": "%s",\n  "via": "install.sh",\n  "version": "0.3.0"\n}\n' \
-  "$(if [[ -n "$SHA" ]]; then printf '"%s"' "$SHA"; else echo null; fi)" \
-  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  > storage/app/update-state.json
+if [[ -n "$SHA" ]]; then
+  printf '{\n  "sha": "%s",\n  "installedAt": "%s",\n  "via": "install.sh",\n  "version": "0.3.0"\n}\n' \
+    "$SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > storage/app/update-state.json
+else
+  printf '{\n  "sha": null,\n  "installedAt": "%s",\n  "via": "install.sh",\n  "version": "0.3.0"\n}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > storage/app/update-state.json
+fi
 
 cat <<EOF
 
@@ -268,17 +261,14 @@ Backend:  ${BACKEND}
 Public:   ${BACKEND}/public
 APP_URL:  ${APP_URL}
 
-Quick test (built-in server):
+Quick test:
   cd ${BACKEND}
   ${PHP_BIN} artisan serve --host=0.0.0.0 --port=8000
 
-Production: point Nginx/Apache document root to:
+Production document root:
   ${BACKEND}/public
 
-UI build (if present):
-  ${BACKEND}/public/app/
-
-Later updates (from GitHub):
+Updates later:
   cd ${BACKEND} && ${PHP_BIN} artisan agrivision:update --check
   cd ${BACKEND} && ${PHP_BIN} artisan agrivision:update --apply
 
