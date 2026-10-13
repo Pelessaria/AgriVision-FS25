@@ -1,45 +1,49 @@
 # Installation
 
-**Status:** VPS-Testpfad über `scripts/install.sh`. Web-Installer und PowerShell sind derzeit nicht aktiv.  
+**Status:** VPS-Testpfad über `scripts/install.sh` (inkl. Paket-Provisionierung).  
 **Stand:** 14. Oktober 2026
 
-Technische Begründung: [INSTALLATION-STRATEGY.md](INSTALLATION-STRATEGY.md). Webspace: [SHARED-HOSTING.md](SHARED-HOSTING.md). Updates: [UPDATES.md](UPDATES.md).
+Updates: [UPDATES.md](UPDATES.md). Shared Hosting später: [SHARED-HOSTING.md](SHARED-HOSTING.md).
 
-## 1. VPS / Testserver (`install.sh`)
+## VPS / Testserver
 
-Voraussetzung: PHP 8.3+ mit den üblichen Laravel-Erweiterungen, `curl`, `unzip`, MySQL 8 oder MariaDB 10.11+.
+Das Script installiert bei Bedarf per `apt`/`dnf`:
+
+- PHP 8.3+ (cli, fpm) inkl. Laravel-Erweiterungen  
+- curl, unzip, git  
+- optional MariaDB (`--with-db`) inkl. DB + User  
+- optional Nginx (`--with-nginx`) inkl. Site-Config auf `backend/public`
 
 ```bash
-# Von GitHub (jsDelivr — raw.githubusercontent.com/main kann verzögert cachen):
 curl -fsSL https://cdn.jsdelivr.net/gh/Pelessaria/AgriVision-FS25@main/scripts/install.sh -o install.sh
 chmod +x install.sh
-./install.sh --target /var/www/agrivision \
-  --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password 'secret' \
-  --app-url https://agrivision.example.com --migrate
-
-# Oder aus einem Clone:
-git clone https://github.com/Pelessaria/AgriVision-FS25.git
-cd AgriVision-FS25
-./scripts/install.sh --skip-download --migrate \
-  --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password 'secret' \
-  --app-url https://agrivision.example.com
+sudo ./install.sh --target /var/www/agrivision \
+  --with-db --with-nginx --migrate \
+  --db-name agrivision --db-user agrivision --db-password 'secret' \
+  --app-url http://YOUR_SERVER_IP
 ```
 
-Schnelltest ohne Reverse-Proxy:
+Ohne Nginx (nur PHP built-in server):
 
 ```bash
-cd /var/www/agrivision/backend
-php artisan serve --host=0.0.0.0 --port=8000
+sudo ./install.sh --target /var/www/agrivision --with-db --migrate \
+  --db-password 'secret'
+cd /var/www/agrivision/backend && php artisan serve --host=0.0.0.0 --port=8000
 ```
 
-Document Root in Produktion: `backend/public`. Frontend-Build liegt unter `backend/public/app/` (aus dem Repo-`frontend/dist` oder via `--build-frontend`).
+Aus einem Clone:
 
-## 2. Shared Hosting
+```bash
+git clone https://github.com/Pelessaria/AgriVision-FS25.git
+cd AgriVision-FS25
+sudo ./scripts/install.sh --skip-download --with-db --with-nginx --migrate \
+  --db-password 'secret'
+```
 
-Weiterhin Zielbild (Upload + späterer Web-Installer). Aktuell zum Testen den VPS-Pfad nutzen. Details: [SHARED-HOSTING.md](SHARED-HOSTING.md).
+`sudo` ist nötig für Pakete, MariaDB und Nginx. Nur App-Code ohne Systempakete: `--skip-packages`.
 
-## 3. Nach der Installation
+## Danach
 
-1. Workspace für einen Spielserver anlegen (UI / später API).
-2. Connector-ZIP: `connector/dist/FS25_AgriVisionConnector.zip` — Probe: [connector/PROBE.md](../connector/PROBE.md).
-3. Updates: Einstellungen → Update oder `php artisan agrivision:update --apply`.
+1. UI unter `APP_URL` bzw. `…/app/` (gebauter Frontend-Stand).  
+2. Connector: `connector/dist/FS25_AgriVisionConnector.zip` — [PROBE.md](../connector/PROBE.md).  
+3. Updates: `php artisan agrivision:update --apply` oder Einstellungen → Update.
