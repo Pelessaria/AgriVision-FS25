@@ -76,14 +76,22 @@ need_cmd() {
 
 set_env_key() {
   local file="$1" key="$2" value="$3"
-  local formatted
-  if [[ -z "$value" || "$value" =~ [[:space:]#\"\'\\\$`] ]]; then
+  local formatted needs_quotes=0
+
+  # Quote values that would break bare KEY=value lines (avoid backticks in [[ ]]).
+  if [[ -z "$value" ]]; then
+    needs_quotes=1
+  elif printf '%s' "$value" | grep -qE '[[:space:]#"'"'"'\\$]'; then
+    needs_quotes=1
+  fi
+
+  if [[ "$needs_quotes" -eq 1 ]]; then
     formatted="\"$(printf '%s' "$value" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')\""
   else
     formatted="$value"
   fi
+
   if grep -qE "^${key}=" "$file"; then
-    # Use | delimiter; escape | in replacement
     local repl
     repl=$(printf '%s' "$formatted" | sed -e 's/|/\\|/g')
     sed -i.bak -e "s|^${key}=.*|${key}=${repl}|" "$file"
