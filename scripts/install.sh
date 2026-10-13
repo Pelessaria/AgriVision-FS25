@@ -290,18 +290,20 @@ setup_database() {
     die "mysql/mariadb client not found after package install"
   fi
 
-  local pass_sql user_sql name_sql
-  pass_sql=${DB_PASSWORD//\'/\'\'}
-  user_sql=${DB_USER//\'/\'\'}
-  name_sql=${DB_NAME//\`/}
+  [[ "$DB_NAME" =~ ^[A-Za-z0-9_]+$ ]] || die "db-name must be alphanumeric/underscore"
+  [[ "$DB_USER" =~ ^[A-Za-z0-9_]+$ ]] || die "db-user must be alphanumeric/underscore"
 
+  local pass_sql
+  pass_sql=${DB_PASSWORD//\'/\'\'}
+
+  # No SQL backticks here: unquoted heredocs would treat them as shell command substitution.
   local sql
   sql=$(cat <<SQL
-CREATE DATABASE IF NOT EXISTS \`${name_sql}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER IF NOT EXISTS '${user_sql}'@'localhost' IDENTIFIED BY '${pass_sql}';
-CREATE USER IF NOT EXISTS '${user_sql}'@'127.0.0.1' IDENTIFIED BY '${pass_sql}';
-GRANT ALL PRIVILEGES ON \`${name_sql}\`.* TO '${user_sql}'@'localhost';
-GRANT ALL PRIVILEGES ON \`${name_sql}\`.* TO '${user_sql}'@'127.0.0.1';
+CREATE DATABASE IF NOT EXISTS ${DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS '${DB_USER}'@'localhost' IDENTIFIED BY '${pass_sql}';
+CREATE USER IF NOT EXISTS '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${pass_sql}';
+GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost';
+GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'127.0.0.1';
 FLUSH PRIVILEGES;
 SQL
 )
@@ -310,9 +312,9 @@ SQL
     log "Database ready: ${DB_NAME} / ${DB_USER}@localhost"
   else
     sql=$(cat <<SQL
-CREATE DATABASE IF NOT EXISTS \`${name_sql}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-GRANT ALL PRIVILEGES ON \`${name_sql}\`.* TO '${user_sql}'@'localhost' IDENTIFIED BY '${pass_sql}';
-GRANT ALL PRIVILEGES ON \`${name_sql}\`.* TO '${user_sql}'@'127.0.0.1' IDENTIFIED BY '${pass_sql}';
+CREATE DATABASE IF NOT EXISTS ${DB_NAME} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'localhost' IDENTIFIED BY '${pass_sql}';
+GRANT ALL PRIVILEGES ON ${DB_NAME}.* TO '${DB_USER}'@'127.0.0.1' IDENTIFIED BY '${pass_sql}';
 FLUSH PRIVILEGES;
 SQL
 )
