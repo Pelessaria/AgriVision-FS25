@@ -1,0 +1,67 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Str;
+
+class Workspace extends Model
+{
+    protected $fillable = [
+        'public_id',
+        'display_name',
+        'number',
+        'lifecycle',
+        'link_state',
+        'data_mode',
+        'map_name',
+        'game_version',
+        'map_size',
+        'players_online',
+        'player_capacity',
+        'connector_version',
+        'last_seen_at',
+        'last_sync_at',
+        'status_note',
+        'feed_base_url',
+        'feed_code_encrypted',
+    ];
+
+    protected function casts(): array
+    {
+        return [
+            'last_seen_at' => 'datetime',
+            'last_sync_at' => 'datetime',
+            'map_size' => 'integer',
+            'players_online' => 'integer',
+            'player_capacity' => 'integer',
+            'number' => 'integer',
+        ];
+    }
+
+    protected static function booted(): void
+    {
+        static::creating(function (Workspace $workspace) {
+            if (empty($workspace->public_id)) {
+                $workspace->public_id = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function setFeedCode(?string $code): void
+    {
+        $this->feed_code_encrypted = $code === null || $code === ''
+            ? null
+            : Crypt::encryptString($code);
+    }
+
+    public function feedCode(): ?string
+    {
+        if ($this->feed_code_encrypted === null || $this->feed_code_encrypted === '') {
+            return null;
+        }
+
+        return Crypt::decryptString($this->feed_code_encrypted);
+    }
+}

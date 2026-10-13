@@ -1,0 +1,90 @@
+# AgriVision (FS25 Management Platform)
+
+**Status:** Phase 3 gestartet — React-Prototyp, Laravel-Backend-Grundgerüst, Connector v0, Feed-Client.  
+**Stand:** 14. Oktober 2026  
+**Produktname in der UI:** AgriVision
+
+Der Ordnername dieses Arbeitsverzeichnisses ist kein Produktname. Anzeigename, Texte und spätere Domain bleiben Konfiguration.
+
+## Worum es geht
+
+Die Plattform soll Daten mehrerer Farming-Simulator-25-Spielstände erfassen, sie in getrennten Workspaces zeigen und ausgewählte Aktionen erst dann als erledigt werten, wenn ein Connector die Ausführung im Spiel bestätigt hat.
+
+Sie besteht perspektivisch aus:
+
+- einem Web-Control-Center für die gesamte Installation,
+- einem Workspace je registriertem Gameserver,
+- einem PHP-Backend mit MariaDB oder MySQL,
+- einem FS25-Lua-Connector,
+- später einer Ingame-Oberfläche, sobald die Modding-Schnittstelle dafür geprüft ist.
+
+## Kernentscheidung
+
+Das Webdashboard wird als **PHP-8.3-Monolith mit Laravel 13** und einem **statisch gebauten React-Frontend** geplant. Es braucht keinen dauerhaft laufenden Node-Prozess, kein Redis und keine WebSockets. Dieselbe Codebasis soll auf klassischem Shared Hosting und optional per Docker auf einem eigenen Server laufen.
+
+Lesen vom Dedicated Server läuft zuerst über die eingebaute Web-API. Ein Testserver hat am 12. Oktober 2026 den Stats-Feed, das Kartenbild und drei Savegame-Dateien geliefert. Schreiben und fehlende Fachdaten bleiben beim Lua-Mod. Dessen Dateien liegen unter `modSettings`; Miet-Hoster geben diesen Ordner nach Betreiberangabe zusammen mit Mods und Savegames per FTP frei. Die Pfade sind je Server verschieden und werden bei der Einrichtung geprüft. Ausgehendes HTTPS aus Lua ist weiterhin nicht nachgewiesen.
+
+Details, Belege und offene Punkte stehen in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) und [docs/FS25-INTEGRATION.md](docs/FS25-INTEGRATION.md).
+
+## Prototyp ansehen
+
+Der klickbare Prototyp liegt in `frontend/`. Er spricht kein Backend an und enthält keine Zugangsdaten. Demo-Änderungen bleiben im `sessionStorage` des Browsers.
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Anmeldung im Prototyp: beliebige gültige E-Mail und ein Passwort mit mindestens 12 Zeichen. Das Passwort `wrong-password` zeigt den Fehlerzustand. Danach ist die Ansicht „Mira Albrecht“, Realm-Admin. Im Benutzermenü lässt sich die Demo-Rolle wechseln.
+
+`npm run lint` und `npm run build` prüfen den Prototyp. Der Build bleibt in `frontend/dist` und wird noch nicht von PHP ausgeliefert.
+
+## Backend + Datenbank (lokal)
+
+```bash
+docker compose --profile mysql up -d
+cd backend
+cp .env.example .env   # Windows: copy .env.example .env
+php artisan key:generate
+php artisan migrate
+php artisan fs25:feed-fetch --url="https://HOST:PORT/feed/dedicated-server-stats.json?code=…"
+```
+
+Deploy- und Smoke-Checkliste: [docs/DEPLOY-TEST.md](docs/DEPLOY-TEST.md). Connector-Probe: [connector/PROBE.md](connector/PROBE.md).
+
+## Dokumente
+
+| Dokument | Inhalt |
+| --- | --- |
+| [docs/DEPLOY-TEST.md](docs/DEPLOY-TEST.md) | Webserver/DB-Test, Feed-Fetch, Smoke-Checks |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Stack, Grenzen, Kommunikation, Verzeichnisplan |
+| [docs/DATA-MODEL.md](docs/DATA-MODEL.md) | Realms, Benutzer, Workspaces, Höfe, Spielobjekte |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Phasen und prüfbare Schritte |
+| [docs/SECURITY.md](docs/SECURITY.md) | Bedrohungsmodell und sichere Defaults |
+| [docs/FS25-INTEGRATION.md](docs/FS25-INTEGRATION.md) | Belegte, angenommene und offene Spielschnittstellen |
+| [docs/CONNECTOR-CONTRACT.md](docs/CONNECTOR-CONTRACT.md) | Dateivertrag Mod ↔ Backend (hello, Fahrzeuge, Icons) |
+| [connector/](connector/) | FS25-Connector-Quellen (v0) |
+| [docs/INSTALLATION-STRATEGY.md](docs/INSTALLATION-STRATEGY.md) | Installer, Release-Paket, Fallbacks |
+| [docs/SHARED-HOSTING.md](docs/SHARED-HOSTING.md) | Webspace ohne Root |
+| [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md) | VPS und optionales Docker Compose |
+| [docs/DATABASES.md](docs/DATABASES.md) | MariaDB und MySQL |
+| [docs/HOSTING-COMPATIBILITY.md](docs/HOSTING-COMPATIBILITY.md) | Spielserver-Anbieter, ungeprüft markiert |
+| [docs/I18N.md](docs/I18N.md) | Deutsch, Englisch, weitere Sprachen |
+| [docs/PLUGIN-ARCHITECTURE.md](docs/PLUGIN-ARCHITECTURE.md) | Spätere Erweiterungen ohne unsichere Sandbox-Behauptung |
+| [docs/API.md](docs/API.md) | Geplante API, noch ohne Implementierung |
+| [docs/INSTALLATION.md](docs/INSTALLATION.md) | Geplante Bedienschritte für die Einrichtung |
+| [docs/BACKUP-RESTORE.md](docs/BACKUP-RESTORE.md) | Geplantes Sicherungsmodell |
+| [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) | Geplante Entwicklungsumgebung und Tests |
+| [docs/UX.md](docs/UX.md) | Designrichtung für den Prototyp, Nalika nur als Strukturreferenz |
+| [CHANGELOG.md](CHANGELOG.md) | Änderungsprotokoll |
+
+## Lesarten in den Dokumenten
+
+- **Fakt:** durch Herstellerdoku oder ein öffentlich einsehbares Projekt zum Stand dieser Analyse belegt.
+- **Annahme:** für die Architektur verwendet, von uns noch nicht getestet.
+- **Offen:** vor der zugehörigen Implementierung zu prüfen. Darauf wird keine Kernfunktion zugesichert.
+
+## Nächster Schritt
+
+Installer, Sessions/Rollen und Anbindung des React-Frontends an die Laravel-API. Feed- und Connector-Pfade bleiben serverseitig.

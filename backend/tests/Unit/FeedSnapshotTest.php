@@ -1,0 +1,63 @@
+<?php
+
+namespace Tests\Unit;
+
+use App\Services\Fs25\FeedSnapshot;
+use PHPUnit\Framework\TestCase;
+
+class FeedSnapshotTest extends TestCase
+{
+    public function test_from_raw_normalizes_stats_and_counts(): void
+    {
+        $stats = [
+            'server' => [
+                'name' => 'Test Farm',
+                'mapName' => 'Riverbend Springs',
+                'mapSize' => 4096,
+                'version' => '1.24.0.0',
+                'dayTime' => 52000000,
+            ],
+            'Slots' => [
+                'capacity' => 10,
+                'numUsed' => 2,
+            ],
+            'Mods' => [
+                'Mod' => [
+                    ['name' => 'FS25_A', 'author' => 'A', 'version' => '1.0', 'hash' => 'aaa', 'title' => 'A'],
+                    ['name' => 'FS25_B', 'author' => 'B', 'version' => '2.0', 'hash' => 'bbb', 'title' => 'B'],
+                ],
+            ],
+            'Vehicles' => [
+                'Vehicle' => [
+                    ['name' => 'Tractor', 'category' => 'tractor', 'type' => 't', 'x' => 1, 'y' => 2, 'z' => 3],
+                ],
+            ],
+        ];
+
+        $career = '<careerSavegame><statistics><money>12345</money></statistics></careerSavegame>';
+        $vehicles = '<vehicles><vehicle uniqueId="1"/><vehicle uniqueId="2"/></vehicles>';
+        $economy = '<economy><fillType name="wheat"/><fillType name="barley"/></economy>';
+
+        $snapshot = FeedSnapshot::fromRaw(
+            baseUrl: 'https://example.test:8080',
+            fetchedAtUtc: '2026-10-14T00:00:00Z',
+            statsJson: $stats,
+            careerXml: $career,
+            vehiclesXml: $vehicles,
+            economyXml: $economy,
+        );
+
+        $this->assertSame('online', $snapshot->linkState);
+        $this->assertSame('Test Farm', $snapshot->serverName);
+        $this->assertSame('Riverbend Springs', $snapshot->mapName);
+        $this->assertSame(4096, $snapshot->mapSize);
+        $this->assertSame(2, $snapshot->playersOnline);
+        $this->assertSame(10, $snapshot->playerCapacity);
+        $this->assertSame(2, $snapshot->modCount);
+        $this->assertSame(1, $snapshot->vehicleCountStats);
+        $this->assertSame(2, $snapshot->vehicleCountSavegame);
+        $this->assertSame(2, $snapshot->economyFillTypes);
+        $this->assertSame('12345', $snapshot->careerMoney);
+        $this->assertArrayNotHasKey('code', $snapshot->toArray());
+    }
+}
