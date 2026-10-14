@@ -129,11 +129,18 @@ export async function checkForUpdates(installedVersion: string, installedSha: st
   }
 }
 
-export async function applyUpdate(sha: string | null): Promise<{ ok: boolean; error?: string; message?: string }> {
+export async function applyUpdate(
+  sha: string | null,
+  options: { force?: boolean } = {},
+): Promise<{ ok: boolean; error?: string; message?: string }> {
   try {
     const json = await apiFetch<{ ok?: boolean; error?: string; message?: string }>("/api/system/update", {
       method: "POST",
-      body: JSON.stringify({ confirm: true, sha: sha ?? undefined }),
+      body: JSON.stringify({
+        confirm: true,
+        sha: sha ?? undefined,
+        force: options.force === true,
+      }),
     })
     if (json.ok === false) {
       return { ok: false, error: json.error ?? "Update failed" }

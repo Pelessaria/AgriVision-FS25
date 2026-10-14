@@ -54,7 +54,10 @@ class SystemUpdateController extends Controller
         }
 
         try {
-            $result = $updates->apply($request->string('sha')->toString() ?: null);
+            $result = $updates->apply(
+                $request->string('sha')->toString() ?: null,
+                $request->boolean('force'),
+            );
 
             return response()->json($result);
         } catch (Throwable $e) {

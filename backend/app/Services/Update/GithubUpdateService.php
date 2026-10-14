@@ -78,7 +78,7 @@ final class GithubUpdateService
      *   message: string
      * }
      */
-    public function apply(?string $confirmSha = null): array
+    public function apply(?string $confirmSha = null, bool $force = false): array
     {
         if (! config('agrivision.updates.enabled')) {
             throw new RuntimeException('Updates are disabled on this installation.');
@@ -100,17 +100,133 @@ final class GithubUpdateService
 
         $state = $this->readState();
         $fromSha = $state['sha'] ?? null;
-        if (is_string($fromSha) && hash_equals($fromSha, $toSha)) {
+        $alreadyLatest = is_string($fromSha) && hash_equals($fromSha, $toSha);
+
+        // Same Git SHA can still mean a stale SPA in public/ (failed copy, cache, skipped dist).
+        // Without --force we still re-deploy the frontend; with --force we re-overlay backend too.
+        if ($alreadyLatest && ! $force) {
+            return $this->redeploySpaFromGithub($owner, $repo, $toSha, $fromSha);
+        }
+
+        [$zipPath, $extractPath] = $this->downloadAndExtract($owner, $repo, $toSha);
+
+        try {
+            // Never touch secrets / runtime while overlaying application code.
+            $backendRoot = $this->locateBackendRoot($extractPath);
+            $filesWritten = $this->overlayDirectory($backendRoot, base_path());
+
+            $frontendDist = $this->locateFrontendDist($extractPath);
+            if ($frontendDist !== null) {
+                $filesWritten += $this->deploySpa($frontendDist);
+            } else {
+                throw new RuntimeException('Update archive is missing frontend/dist — UI was not refreshed.');
+            }
+
+            $this->fixWebPermissions();
+
+            $migrationsRan = false;
+            try {
+                Artisan::call('migrate', ['--force' => true]);
+                $migrationsRan = true;
+            } catch (Throwable $e) {
+                $this->writeState([
+                    'sha' => $toSha,
+                    'installedAt' => gmdate('c'),
+                    'fromSha' => $fromSha,
+                    'filesWritten' => $filesWritten,
+                    'migrationError' => $e->getMessage(),
+                ]);
+
+                throw new RuntimeException(
+                    'Files updated, but migrations failed: '.$e->getMessage(),
+                    0,
+                    $e
+                );
+            }
+
+            try {
+                Artisan::call('optimize:clear');
+            } catch (Throwable) {
+                // Optional on constrained hosts.
+            }
+
+            // Re-assert APP_KEY still present after overlay.
+            $envPath = base_path('.env');
+            if (! File::exists($envPath) || ! preg_match('/^APP_KEY=base64:.+/m', (string) File::get($envPath))) {
+                throw new RuntimeException('Update aborted post-check: APP_KEY missing in .env (env was preserved; check file manually).');
+            }
+
+            $this->writeState([
+                'sha' => $toSha,
+                'installedAt' => gmdate('c'),
+                'fromSha' => $fromSha,
+                'filesWritten' => $filesWritten,
+                'migrationsRan' => $migrationsRan,
+            ]);
+
             return [
                 'ok' => true,
                 'fromSha' => $fromSha,
                 'toSha' => $toSha,
-                'filesWritten' => 0,
-                'migrationsRan' => false,
-                'message' => 'Already on the latest commit.',
+                'filesWritten' => $filesWritten,
+                'migrationsRan' => $migrationsRan,
+                'message' => 'Update applied safely (.env/storage preserved, SPA redeployed).',
             ];
+        } finally {
+            File::delete($zipPath);
+            if (File::exists($extractPath)) {
+                File::deleteDirectory($extractPath);
+            }
         }
+    }
 
+    /**
+     * Re-copy frontend/dist → public/agrivision.html + assets even when Git SHA already matches.
+     *
+     * @return array{ok: bool, fromSha: string|null, toSha: string, filesWritten: int, migrationsRan: bool, message: string}
+     */
+    private function redeploySpaFromGithub(string $owner, string $repo, string $toSha, ?string $fromSha): array
+    {
+        [$zipPath, $extractPath] = $this->downloadAndExtract($owner, $repo, $toSha);
+
+        try {
+            $frontendDist = $this->locateFrontendDist($extractPath);
+            if ($frontendDist === null) {
+                throw new RuntimeException('Update archive is missing frontend/dist — cannot refresh UI.');
+            }
+
+            $filesWritten = $this->deploySpa($frontendDist);
+            $this->fixWebPermissions();
+
+            $this->writeState([
+                'sha' => $toSha,
+                'installedAt' => gmdate('c'),
+                'fromSha' => $fromSha,
+                'filesWritten' => $filesWritten,
+                'spaRedeployed' => true,
+            ]);
+
+            return [
+                'ok' => true,
+                'fromSha' => $fromSha,
+                'toSha' => $toSha,
+                'filesWritten' => $filesWritten,
+                'migrationsRan' => false,
+                'message' => 'Already on the latest commit — UI files were re-deployed. Hard-refresh the browser (Ctrl+F5).',
+            ];
+        } finally {
+            File::delete($zipPath);
+            if (File::exists($extractPath)) {
+                File::deleteDirectory($extractPath);
+            }
+        }
+    }
+
+    /**
+     * @return array{0: string, 1: string} [zipPath, extractPath]
+     */
+    private function downloadAndExtract(string $owner, string $repo, string $toSha): array
+    {
         $work = storage_path('app/'.trim((string) config('agrivision.updates.work_dir'), '/'));
         File::ensureDirectoryExists($work);
         $zipPath = $work.'/source.zip';
@@ -134,70 +250,7 @@ final class GithubUpdateService
         }
         $zip->close();
 
-        // Never touch secrets / runtime while overlaying application code.
-        $backendRoot = $this->locateBackendRoot($extractPath);
-        $filesWritten = $this->overlayDirectory($backendRoot, base_path());
-
-        $frontendDist = $this->locateFrontendDist($extractPath);
-        if ($frontendDist !== null) {
-            $filesWritten += $this->deploySpa($frontendDist);
-        }
-
-        $this->fixWebPermissions();
-
-        $migrationsRan = false;
-        try {
-            Artisan::call('migrate', ['--force' => true]);
-            $migrationsRan = true;
-        } catch (Throwable $e) {
-            $this->writeState([
-                'sha' => $toSha,
-                'installedAt' => gmdate('c'),
-                'fromSha' => $fromSha,
-                'filesWritten' => $filesWritten,
-                'migrationError' => $e->getMessage(),
-            ]);
-
-            throw new RuntimeException(
-                'Files updated, but migrations failed: '.$e->getMessage(),
-                0,
-                $e
-            );
-        }
-
-        try {
-            Artisan::call('optimize:clear');
-        } catch (Throwable) {
-            // Optional on constrained hosts.
-        }
-
-        // Re-assert APP_KEY still present after overlay.
-        $envPath = base_path('.env');
-        if (! File::exists($envPath) || ! preg_match('/^APP_KEY=base64:.+/m', (string) File::get($envPath))) {
-            throw new RuntimeException('Update aborted post-check: APP_KEY missing in .env (env was preserved; check file manually).');
-        }
-
-        $this->writeState([
-            'sha' => $toSha,
-            'installedAt' => gmdate('c'),
-            'fromSha' => $fromSha,
-            'filesWritten' => $filesWritten,
-            'migrationsRan' => $migrationsRan,
-        ]);
-
-        File::delete($zipPath);
-        if (File::exists($extractPath)) {
-            File::deleteDirectory($extractPath);
-        }
-
-        return [
-            'ok' => true,
-            'fromSha' => $fromSha,
-            'toSha' => $toSha,
-            'filesWritten' => $filesWritten,
-            'migrationsRan' => $migrationsRan,
-            'message' => 'Update applied safely (.env/storage preserved, SPA redeployed).',
-        ];
+        return [$zipPath, $extractPath];
     }
 
     /**
@@ -222,6 +275,7 @@ final class GithubUpdateService
         $index = $distPath.DIRECTORY_SEPARATOR.'index.html';
         if (File::exists($index)) {
             File::copy($index, public_path('agrivision.html'));
+            @chmod(public_path('agrivision.html'), 0644);
             $written++;
         }
 

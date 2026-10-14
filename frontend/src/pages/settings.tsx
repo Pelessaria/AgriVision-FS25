@@ -110,11 +110,14 @@ export function SettingsPage() {
     }
   }, [tab, isAdmin, demoInstalledSha])
 
-  async function runUpdateApply() {
-    if (!updateStatus?.updateAvailable) return
-    if (!window.confirm(t("settings.updateConfirm"))) return
+  async function runUpdateApply(kind: "update" | "repair" = "update") {
+    if (kind === "update" && !updateStatus?.updateAvailable) return
+    if (!window.confirm(kind === "repair" ? t("settings.updateRepairConfirm") : t("settings.updateConfirm"))) {
+      return
+    }
     setUpdateApplying(true)
-    const result = await applyUpdate(updateStatus.remoteSha)
+    // repair: same SHA, backend still re-deploys frontend/dist → public/
+    const result = await applyUpdate(updateStatus?.remoteSha ?? null, { force: false })
     setUpdateApplying(false)
     if (!result.ok) {
       if (result.error === "backend_unavailable") {
@@ -124,15 +127,18 @@ export function SettingsPage() {
       store.pushToast("warn", t("settings.updateFailed", { error: result.error ?? "—" }))
       return
     }
-    if (updateStatus.remoteSha) {
+    if (updateStatus?.remoteSha) {
       try {
         localStorage.setItem("agrivision.installedSha", updateStatus.remoteSha)
       } catch {
         /* ignore */
       }
     }
-    store.pushToast("ok", t("settings.updateApplied"))
+    store.pushToast("ok", result.message ?? t("settings.updateApplied"))
     await runUpdateCheck()
+    window.setTimeout(() => {
+      window.location.reload()
+    }, 600)
   }
 
   function onAvatar(event: ChangeEvent<HTMLInputElement>) {
@@ -577,14 +583,28 @@ export function SettingsPage() {
                     ? t("settings.updateApplyDisabledCurrent")
                     : undefined
               }
-              onClick={() => void runUpdateApply()}
+              onClick={() => void runUpdateApply("update")}
             >
               {updateApplying ? t("settings.updateApplying") : t("settings.updateApply")}
             </button>
+            {liveMode && updateStatus && !updateStatus.updateAvailable ? (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={updateChecking || updateApplying}
+                title={t("settings.updateRepairHint")}
+                onClick={() => void runUpdateApply("repair")}
+              >
+                {t("settings.updateRepair")}
+              </button>
+            ) : null}
             <a className="btn btn-ghost" href={GITHUB_REPO_URL} target="_blank" rel="noreferrer">
               {t("settings.updateOpenRepo")}
             </a>
           </div>
+          {liveMode && updateStatus && !updateStatus.updateAvailable ? (
+            <p className="hint">{t("settings.updateRepairHint")}</p>
+          ) : null}
         </section>
       ) : null}
 

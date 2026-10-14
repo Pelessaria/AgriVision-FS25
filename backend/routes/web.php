@@ -10,7 +10,12 @@ use Illuminate\Support\Facades\Route;
 Route::get('/{any?}', function () {
     $spa = public_path('agrivision.html');
     if (is_file($spa)) {
-        return response()->file($spa);
+        // Never let browsers keep a stale shell that points at old /assets/*.js hashes.
+        return response()->file($spa, [
+            'Content-Type' => 'text/html; charset=UTF-8',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+            'Pragma' => 'no-cache',
+        ]);
     }
 
     return view('welcome');
