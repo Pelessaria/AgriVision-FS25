@@ -647,6 +647,11 @@ set_env_key .env DB_PORT "$DB_PORT"
 set_env_key .env DB_DATABASE "$DB_NAME"
 set_env_key .env DB_USERNAME "$DB_USER"
 set_env_key .env DB_PASSWORD "$DB_PASSWORD"
+# File drivers avoid 500s when DB sessions/cache tables are missing or unreachable.
+set_env_key .env SESSION_DRIVER "file"
+set_env_key .env CACHE_STORE "file"
+set_env_key .env QUEUE_CONNECTION "sync"
+set_env_key .env LOG_CHANNEL "stack"
 
 if [[ "$BEHIND_PROXY" -eq 1 ]]; then
   set_env_key .env TRUSTED_PROXIES "*"
@@ -659,9 +664,15 @@ log "Application key"
 "$PHP_BIN" artisan key:generate --force
 
 log "Writable dirs"
-mkdir -p storage/framework/cache storage/framework/sessions storage/framework/views
+mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views
 mkdir -p storage/logs storage/app/public bootstrap/cache
 chmod -R ug+rwx storage bootstrap/cache || true
+# Ensure web server can write logs/sessions (common cause of HTTP 500)
+web_user="www-data"
+id -u nginx >/dev/null 2>&1 && web_user="nginx"
+if id -u "$web_user" >/dev/null 2>&1; then
+  run_root chown -R "$web_user":"$web_user" storage bootstrap/cache || true
+fi
 
 if [[ "$BUILD_FRONTEND" -eq 1 ]]; then
   need_cmd npm

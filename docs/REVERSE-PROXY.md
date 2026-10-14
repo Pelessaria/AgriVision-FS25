@@ -44,3 +44,34 @@ Intern: Nginx auf Port `8080` (nicht oeffentlich 443).
 ## 3. Bereits installiert — nur Domain
 
 `.env` wie oben anpassen, `php artisan config:clear`, Nginx-Listen-Port = NPM-Forward-Port.
+
+## 4. HTTP 500 hinter dem Proxy
+
+Auf dem VPS:
+
+```bash
+# 1) Laravel-Log
+sudo tail -n 80 /var/www/agrivision/backend/storage/logs/laravel.log
+
+# 2) Direkt ohne NPM testen (muss 200 sein)
+curl -sI http://127.0.0.1:8080/up
+curl -sI http://127.0.0.1:8080/
+
+# 3) Typische Fixes
+cd /var/www/agrivision/backend
+sudo chown -R www-data:www-data storage bootstrap/cache
+sudo chmod -R ug+rwx storage bootstrap/cache
+
+# In .env sicherstellen:
+# APP_URL=https://agrivision.pelessaria.de
+# TRUSTED_PROXIES=*
+# SESSION_SECURE_COOKIE=true
+# SESSION_DRIVER=file
+# CACHE_STORE=file
+
+php artisan config:clear
+php artisan cache:clear
+sudo systemctl reload php*-fpm nginx
+```
+
+Wenn `/up` lokal OK ist, aber die Domain 500 liefert: NPM Forward Port/IP und „Websockets“ prüfen; SSL nur am NPM.
