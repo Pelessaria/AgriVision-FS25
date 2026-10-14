@@ -168,6 +168,7 @@ export const en = {
     unpaired: "Pairing missing",
     stale: "Latest data is stale",
     feed: "Feed code missing",
+    offline: "Game server unreachable",
     disabled: "Instance is disabled",
   },
   create: {

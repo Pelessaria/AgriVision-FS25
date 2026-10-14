@@ -93,7 +93,7 @@ class WorkspaceController extends Controller
 
             if ($request->boolean('sync') && filled($row->feed_base_url) && $row->feedCode()) {
                 try {
-                    $feeds->sync($row);
+                    $feeds->sync($row, true);
                     $row->refresh();
                 } catch (Throwable $e) {
                     // 200 so the SPA still receives the saved workspace (credentials kept).
@@ -112,12 +112,13 @@ class WorkspaceController extends Controller
         ]);
     }
 
-    public function sync(string $workspace, WorkspaceFeedService $feeds): JsonResponse
+    public function sync(Request $request, string $workspace, WorkspaceFeedService $feeds): JsonResponse
     {
         $row = $this->findWorkspace($workspace);
+        $light = $request->boolean('light', true);
 
         try {
-            $feeds->sync($row);
+            $feeds->sync($row, $light);
         } catch (Throwable $e) {
             return response()->json([
                 'ok' => false,
@@ -128,6 +129,20 @@ class WorkspaceController extends Controller
 
         return response()->json([
             'ok' => true,
+            'workspace' => $this->serialize($row->fresh()),
+        ]);
+    }
+
+    public function vehicles(string $workspace, WorkspaceFeedService $feeds): JsonResponse
+    {
+        $row = $this->findWorkspace($workspace);
+        $result = $feeds->fetchVehicles($row);
+
+        return response()->json([
+            'ok' => $result['ok'],
+            'error' => $result['error'],
+            'fetchedAt' => $result['fetchedAt'],
+            'vehicles' => $result['vehicles'],
             'workspace' => $this->serialize($row->fresh()),
         ]);
     }
@@ -177,8 +192,11 @@ class WorkspaceController extends Controller
         } elseif ($w->link_state === 'unpaired' || ! $feedConfigured) {
             $notice = 'unpaired';
         } elseif ($w->link_state === 'offline' || $w->link_state === 'error') {
-            $notice = 'feed';
+            // Host unreachable — not a missing feed code.
+            $notice = 'offline';
         }
+
+        $online = $w->link_state === 'online';
 
         return [
             'id' => $w->public_id,
@@ -198,7 +216,10 @@ class WorkspaceController extends Controller
             // Origin only — never the feed code.
             'feedUrl' => $w->feed_base_url ?? '',
             'feedConfigured' => $feedConfigured,
-            'mapPreviewPath' => $feedConfigured ? '/api/workspaces/'.$w->public_id.'/map' : null,
+            // Only when online — avoid long-hanging map fetches for dead hosts.
+            'mapPreviewPath' => ($feedConfigured && $online)
+                ? '/api/workspaces/'.$w->public_id.'/map'
+                : null,
             'dataMode' => $w->data_mode,
             'statusNote' => $w->status_note,
         ];

@@ -83,7 +83,7 @@ export interface Workspace {
   lastSeenAt: string | null
   lastSyncAt: string | null
   connectorVersion: string | null
-  notice: "unpaired" | "stale" | "feed" | "disabled" | null
+  notice: "unpaired" | "stale" | "feed" | "offline" | "disabled" | null
   /** Origin only (no feed code). */
   feedUrl: string
   feedConfigured?: boolean

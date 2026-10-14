@@ -92,6 +92,7 @@ interface Store {
   setDisabled: (id: string, disabled: boolean) => Promise<void>
   testConnection: (id: string) => Promise<"ok" | "offline" | "unpaired" | "disabled">
   refreshWorkspaces: (options?: { sync?: boolean }) => Promise<void>
+  upsertWorkspace: (workspace: Workspace) => void
   revealCode: (id: string) => string
   hideCode: (id: string) => void
   createUser: (name: string, email: string) => string | "taken"
@@ -584,20 +585,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     refreshWorkspaces: async (options) => {
       if (!liveMode) return
-      let list = await apiWorkspaces()
-      if (options?.sync) {
-        for (const workspace of list) {
-          if (workspace.disabled || !workspace.feedConfigured) continue
-          try {
-            const result = await apiSyncWorkspace(workspace.id)
-            list = list.map((item) => (item.id === workspace.id ? result.workspace : item))
-          } catch {
-            // Keep previous row; next workspace still syncs.
-          }
-        }
-        list = await apiWorkspaces()
-      }
+      const list = await apiWorkspaces()
       setWorkspaces(list)
+      if (!options?.sync) return
+
+      // Fire-and-forget parallel light probes — overview must not wait on dead hosts.
+      const targets = list.filter((workspace) => !workspace.disabled && workspace.feedConfigured)
+      void Promise.allSettled(
+        targets.map(async (workspace) => {
+          try {
+            const result = await apiSyncWorkspace(workspace.id, { light: true })
+            setWorkspaces((current) =>
+              current.map((item) => (item.id === workspace.id ? result.workspace : item)),
+            )
+          } catch {
+            // Keep previous row for this host.
+          }
+        }),
+      )
+    },
+    upsertWorkspace: (workspace) => {
+      setWorkspaces((current) => {
+        const index = current.findIndex((item) => item.id === workspace.id)
+        if (index < 0) return [...current, workspace]
+        return current.map((item) => (item.id === workspace.id ? workspace : item))
+      })
     },
     revealCode: (id) => {
       const code = demoCode()

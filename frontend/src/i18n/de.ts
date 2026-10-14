@@ -166,6 +166,7 @@ export const de = {
     unpaired: "Kopplung fehlt",
     stale: "Letzte Daten sind veraltet",
     feed: "Feed-Code fehlt",
+    offline: "Gameserver nicht erreichbar",
     disabled: "Instanz ist deaktiviert",
   },
   create: {

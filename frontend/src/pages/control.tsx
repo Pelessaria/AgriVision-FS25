@@ -39,7 +39,13 @@ function matches(workspace: Workspace, filter: Filter, query: string) {
   if (query && !workspace.name.toLocaleLowerCase().includes(query)) return false
   if (filter === "all") return true
   if (filter === "warning") {
-    return workspace.disabled || workspace.linkState === "error" || workspace.notice === "stale" || workspace.notice === "feed"
+    return (
+      workspace.disabled ||
+      workspace.linkState === "error" ||
+      workspace.notice === "stale" ||
+      workspace.notice === "feed" ||
+      workspace.notice === "offline"
+    )
   }
   if (workspace.disabled) return false
   return workspace.linkState === filter
@@ -93,6 +99,7 @@ export function ControlPage() {
     setPhase("loading")
     try {
       if (liveMode) {
+        // Resolves after the workspace list; feed probes continue in the background.
         await store.refreshWorkspaces({ sync: syncFeeds })
       } else {
         await new Promise((resolve) => window.setTimeout(resolve, 400))

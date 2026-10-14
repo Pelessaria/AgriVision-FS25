@@ -21,6 +21,7 @@ Route::middleware('auth:web')->group(function () {
     Route::get('/workspaces/{workspace}', [WorkspaceController::class, 'show']);
     Route::patch('/workspaces/{workspace}', [WorkspaceController::class, 'update']);
     Route::post('/workspaces/{workspace}/sync', [WorkspaceController::class, 'sync']);
+    Route::get('/workspaces/{workspace}/vehicles', [WorkspaceController::class, 'vehicles']);
     Route::get('/workspaces/{workspace}/map', [WorkspaceController::class, 'map']);
 
     Route::get('/system/update', [SystemUpdateController::class, 'status']);

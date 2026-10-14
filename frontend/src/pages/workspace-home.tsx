@@ -1,8 +1,11 @@
+import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
+import { apiWorkspaceVehicles } from "../api"
 import { EmptyState, MissingValue, MissingWorkspace, PermissionBlock, useTimeLabel } from "../components/ui"
 import { APP_MODULES } from "../modules"
 import { useStore } from "../store"
+import type { Vehicle } from "../types"
 import { useWorkspaceRoute } from "../use-workspace"
 
 function money(value: number | null, locale: string) {
@@ -17,8 +20,31 @@ function money(value: number | null, locale: string) {
 export function WorkspaceHomePage() {
   const { t, i18n } = useTranslation()
   const stamp = useTimeLabel()
-  const { activity, moduleAccess, selectedFarm, vehicles } = useStore()
+  const { activity, liveMode, moduleAccess, selectedFarm, upsertWorkspace, vehicles } = useStore()
   const { workspace, allowed } = useWorkspaceRoute()
+  const [feedVehicles, setFeedVehicles] = useState<Vehicle[] | null>(null)
+  const [feedBusy, setFeedBusy] = useState(false)
+
+  useEffect(() => {
+    if (!workspace || !liveMode || !allowed) return
+    let cancelled = false
+    setFeedBusy(true)
+    void (async () => {
+      try {
+        const result = await apiWorkspaceVehicles(workspace.id)
+        if (cancelled) return
+        setFeedVehicles(result.vehicles)
+        if (result.workspace) upsertWorkspace(result.workspace)
+      } catch {
+        if (!cancelled) setFeedVehicles([])
+      } finally {
+        if (!cancelled) setFeedBusy(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [workspace?.id, liveMode, allowed])
 
   if (!workspace) return <MissingWorkspace />
   if (!allowed) return <PermissionBlock />
@@ -26,15 +52,19 @@ export function WorkspaceHomePage() {
   const farm = selectedFarm(workspace.id)
   const notice = workspace.disabled ? "disabled" : workspace.notice
   const shortcuts = APP_MODULES.filter((module) => moduleAccess(workspace.id, module.id))
-  const farmVehicles = farm
+  const demoFarmVehicles = farm
     ? vehicles.filter((item) => item.workspaceId === workspace.id && item.farmId === farm.gameFarmId)
     : []
+  const equipmentCount = liveMode
+    ? (feedVehicles?.length ?? (feedBusy ? null : 0))
+    : demoFarmVehicles.length
   const entries = activity
     .filter((item) => item.workspaceId === workspace.id)
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))
     .slice(0, 5)
 
-  if (!farm) {
+  // Live instances: show server-level dash even without savegame farms yet.
+  if (!farm && !liveMode) {
     return (
       <section>
         <div className="page-head">
@@ -48,15 +78,18 @@ export function WorkspaceHomePage() {
     )
   }
 
+  const title = farm?.name ?? workspace.name
+  const lead = farm ? t("workspace.farmLead", { server: workspace.name }) : t("workspace.lead")
+
   return (
     <section className="ws-dash">
       <div className="page-head">
         <div>
-          <h1>{farm.name}</h1>
-          <p>{t("workspace.farmLead", { server: workspace.name })}</p>
+          <h1>{title}</h1>
+          <p>{lead}</p>
         </div>
         <div className="ws-dash-meta">
-          <span className="ws-no">{farm.gameFarmId}</span>
+          {farm ? <span className="ws-no">{farm.gameFarmId}</span> : <span className="ws-no">{workspace.number}</span>}
           <span className="status-line">
             <span className={`dot ${workspace.disabled ? "unknown" : workspace.linkState}`} />
             {workspace.disabled ? t("card.disabled") : t(`link.${workspace.linkState}`)}
@@ -73,44 +106,21 @@ export function WorkspaceHomePage() {
 
       <div className="stat-grid ws-dash-stats">
         <div className="stat-tile">
-          <span>{t("workspace.balance")}</span>
-          <strong>
-            <MissingValue text={money(farm.money, i18n.language)} />
-          </strong>
-        </div>
-        <div className="stat-tile">
-          <span>{t("farm.hectares")}</span>
+          <span>{t("workspace.players")}</span>
           <strong>
             <MissingValue
               text={
-                farm.hectares === null
+                workspace.playersOnline == null && workspace.playerCapacity == null
                   ? null
-                  : t("farm.hectaresValue", { value: farm.hectares.toLocaleString(i18n.language) })
+                  : `${workspace.playersOnline ?? "—"} / ${workspace.playerCapacity ?? "—"}`
               }
             />
           </strong>
         </div>
         <div className="stat-tile">
-          <span>{t("modules.equipment")}</span>
-          <strong>{farmVehicles.length}</strong>
-          <em>{t("farm.equipmentHint")}</em>
-        </div>
-        <div className="stat-tile">
-          <span>{t("modules.animals")}</span>
+          <span>{t("workspace.map")}</span>
           <strong>
-            <MissingValue text={farm.animals === null ? null : String(farm.animals)} />
-          </strong>
-        </div>
-        <div className="stat-tile">
-          <span>{t("modules.storage")}</span>
-          <strong>
-            <MissingValue
-              text={
-                farm.storageFill === null
-                  ? null
-                  : t("farm.storageValue", { value: Math.round(farm.storageFill * 100) })
-              }
-            />
+            <MissingValue text={workspace.mapName} />
           </strong>
         </div>
         <div className="stat-tile">
@@ -119,10 +129,59 @@ export function WorkspaceHomePage() {
             <MissingValue text={workspace.gameTime} />
           </strong>
           <em>
-            <MissingValue text={workspace.mapName} />
+            <MissingValue text={workspace.gameVersion ?? null} />
           </em>
         </div>
+        <div className="stat-tile">
+          <span>{t("modules.equipment")}</span>
+          <strong>
+            <MissingValue text={equipmentCount === null ? null : String(equipmentCount)} />
+          </strong>
+          <em>{t("farm.equipmentHint")}</em>
+        </div>
+        {farm ? (
+          <>
+            <div className="stat-tile">
+              <span>{t("workspace.balance")}</span>
+              <strong>
+                <MissingValue text={money(farm.money, i18n.language)} />
+              </strong>
+            </div>
+            <div className="stat-tile">
+              <span>{t("farm.hectares")}</span>
+              <strong>
+                <MissingValue
+                  text={
+                    farm.hectares === null
+                      ? null
+                      : t("farm.hectaresValue", { value: farm.hectares.toLocaleString(i18n.language) })
+                  }
+                />
+              </strong>
+            </div>
+          </>
+        ) : null}
       </div>
+
+      {liveMode && feedVehicles && feedVehicles.length > 0 ? (
+        <section className="panel ws-feed-vehicles">
+          <h2>{t("modules.equipment")}</h2>
+          <p className="hint">{t("vehicles.lead")}</p>
+          <ul className="activity">
+            {feedVehicles.slice(0, 12).map((item) => (
+              <li key={item.id}>
+                <span>{item.name}</span>
+                <span className="faint">{t(`vehicles.${item.category}`)}</span>
+              </li>
+            ))}
+          </ul>
+          {feedVehicles.length > 12 ? (
+            <p className="muted">
+              <Link to={`/w/${workspace.id}/equipment`}>{t("workspace.openVehicles")}</Link>
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       <div className="ws-dash-grid">
         <section className="panel">

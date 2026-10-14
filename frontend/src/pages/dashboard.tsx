@@ -250,7 +250,11 @@ export function DashboardPage() {
           {flagged.map((workspace) => {
             const reason = reasonOf(workspace)
             const detail =
-              reason === "disabled" || reason === "unpaired" || reason === "stale" || reason === "feed"
+              reason === "disabled" ||
+              reason === "unpaired" ||
+              reason === "stale" ||
+              reason === "feed" ||
+              reason === "offline"
                 ? t(`notice.${reason}`)
                 : t(`link.${workspace.linkState}`)
             return (

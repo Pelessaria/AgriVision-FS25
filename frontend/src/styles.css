@@ -475,6 +475,7 @@ h1, h2, h3, p { margin: 0; }
 .equip-icon .icon { width: 16px; height: 16px; }
 .vehicle-card .equip-icon { margin-bottom: 8px; }
 .ws-dash { display: grid; gap: 16px; }
+.ws-feed-vehicles { margin: 0; }
 .ws-dash-meta {
   display: flex;
   flex-wrap: wrap;

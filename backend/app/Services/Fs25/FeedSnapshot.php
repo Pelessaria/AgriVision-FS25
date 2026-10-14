@@ -58,12 +58,19 @@ final class FeedSnapshot
             $modsRaw = [];
         }
 
-        $vehiclesRaw = $statsJson['Vehicles']['Vehicle'] ?? $statsJson['vehicles']['Vehicle'] ?? [];
-        if (isset($vehiclesRaw['name']) || isset($vehiclesRaw['x'])) {
+        // Live JSON: flat `vehicles: [{…}]`. XML-ish: `Vehicles.Vehicle` (object or list).
+        $vehiclesRaw = $statsJson['Vehicles']['Vehicle']
+            ?? $statsJson['vehicles']['Vehicle']
+            ?? $statsJson['Vehicles']
+            ?? $statsJson['vehicles']
+            ?? [];
+        if (isset($vehiclesRaw['name']) || isset($vehiclesRaw['x']) || isset($vehiclesRaw['@attributes'])) {
             $vehiclesRaw = [$vehiclesRaw];
         }
         if (! is_array($vehiclesRaw)) {
             $vehiclesRaw = [];
+        } else {
+            $vehiclesRaw = array_values(array_filter($vehiclesRaw, 'is_array'));
         }
 
         $mods = [];

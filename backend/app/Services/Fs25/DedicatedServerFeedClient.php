@@ -35,9 +35,9 @@ class DedicatedServerFeedClient
         $this->code = trim($code);
     }
 
-    public static function fromParts(string $baseUrl, string $code): self
+    public static function fromParts(string $baseUrl, string $code, int $timeoutSeconds = 20): self
     {
-        return new self($baseUrl, $code);
+        return new self($baseUrl, $code, $timeoutSeconds);
     }
 
     /**
@@ -143,6 +143,23 @@ class DedicatedServerFeedClient
             careerXml: $career,
             vehiclesXml: $vehiclesXml,
             economyXml: $economyXml,
+        );
+    }
+
+    /**
+     * Overview / polling: stats JSON only (one HTTP call, short timeout friendly).
+     */
+    public function fetchLightSnapshot(): FeedSnapshot
+    {
+        $json = $this->fetchStatsJson();
+
+        return FeedSnapshot::fromRaw(
+            baseUrl: $this->baseUrl,
+            fetchedAtUtc: gmdate('c'),
+            statsJson: $json,
+            careerXml: '',
+            vehiclesXml: '',
+            economyXml: '',
         );
     }
 
