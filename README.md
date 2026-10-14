@@ -40,15 +40,16 @@ Anmeldung im Prototyp: beliebige gültige E-Mail und ein Passwort mit mindestens
 
 `npm run lint` und `npm run build` prüfen den Prototyp. Der Build bleibt in `frontend/dist` und wird noch nicht von PHP ausgeliefert.
 
-## VPS-Installation (Test)
+## VPS-Installation (Test / hinter NPM)
 
 ```bash
-./scripts/install.sh --target /var/www/agrivision \
-  --db-host 127.0.0.1 --db-name agrivision --db-user agrivision --db-password '…' \
-  --app-url https://agrivision.example.com --migrate
+sudo ./scripts/install.sh --target /var/www/agrivision \
+  --with-db --with-nginx --behind-proxy --listen-port 8080 --migrate \
+  --db-password 'secret' \
+  --app-url https://agrivision.pelessaria.de
 ```
 
-Details: [docs/INSTALLATION.md](docs/INSTALLATION.md), [scripts/README.md](scripts/README.md). **Kein Docker.** Updates: [docs/UPDATES.md](docs/UPDATES.md). Connector: [connector/PROBE.md](connector/PROBE.md).  
+Details: [docs/INSTALLATION.md](docs/INSTALLATION.md), [docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md). **Kein Docker.** Updates: [docs/UPDATES.md](docs/UPDATES.md).  
 Repo: https://github.com/Pelessaria/AgriVision-FS25
 
 ## Dokumente

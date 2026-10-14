@@ -2,16 +2,16 @@
 # AgriVision VPS install script (testing / advanced self-hosting)
 # No Docker. Provisions OS packages, app code, .env, optional DB + Nginx.
 #
-# Example:
+# Example behind Nginx Proxy Manager:
 #   curl -fsSL https://cdn.jsdelivr.net/gh/Pelessaria/AgriVision-FS25@main/scripts/install.sh -o install.sh
 #   chmod +x install.sh
-#   sudo ./install.sh --target /var/www/agrivision --with-db --with-nginx --migrate \
-#     --db-name agrivision --db-user agrivision --db-password 'secret' \
-#     --app-url http://YOUR_SERVER_IP
+#   sudo ./install.sh --target /var/www/agrivision \
+#     --with-db --with-nginx --behind-proxy --listen-port 8080 --migrate \
+#     --db-password 'secret' \
+#     --app-url https://agrivision.pelessaria.de \
+#     --server-name agrivision.pelessaria.de
 #
-# From a git clone:
-#   sudo ./scripts/install.sh --skip-download --with-db --with-nginx --migrate \
-#     --db-name agrivision --db-user agrivision --db-password 'secret'
+# NPM Proxy Host: http://VPS_IP:8080  +  SSL for the domain (Force SSL on)
 
 set -euo pipefail
 
@@ -25,6 +25,8 @@ MIGRATE=0
 BUILD_FRONTEND=0
 WITH_DB=0
 WITH_NGINX=0
+BEHIND_PROXY=0
+LISTEN_PORT="80"
 DB_HOST="127.0.0.1"
 DB_PORT="3306"
 DB_NAME="agrivision"
@@ -52,7 +54,9 @@ Options:
   --skip-packages       Do not apt/dnf install system packages
   --with-db             Install MariaDB and create database + user
   --with-nginx          Install Nginx, write site config, reload
-  --server-name NAME    Nginx server_name (default: _)
+  --behind-proxy        Trust X-Forwarded-* (Nginx Proxy Manager / TLS at proxy)
+  --listen-port PORT    Nginx listen port (default: 80; use 8080 behind NPM)
+  --server-name NAME    Nginx server_name (e.g. agrivision.pelessaria.de)
   --branch NAME         Git branch (default: main)
   --db-host HOST        Database host (default: 127.0.0.1)
   --db-port PORT        Database port (default: 3306)
@@ -60,7 +64,7 @@ Options:
   --db-user USER        Database user (default: agrivision)
   --db-password PASS    Database password (required with --with-db or --migrate)
   --db-connection NAME  mysql or mariadb (default: mariadb)
-  --app-url URL         APP_URL (default: http://<public-ip or 127.0.0.1>)
+  --app-url URL         Public URL, e.g. https://agrivision.pelessaria.de
   --app-name NAME       APP_NAME (default: AgriVision)
   --migrate             Run php artisan migrate --force
   --build-frontend      npm ci && npm run build (needs Node)
@@ -354,16 +358,36 @@ write_nginx_config() {
   local conf="/etc/nginx/sites-available/agrivision"
   local conf_d="/etc/nginx/conf.d/agrivision.conf"
 
-  log "Writing Nginx site config (root ${public_dir})"
+  log "Writing Nginx site config (root ${public_dir}, port ${LISTEN_PORT})"
+
+  local listen_extra=""
+  if [[ "$LISTEN_PORT" == "80" && "$BEHIND_PROXY" -eq 0 ]]; then
+    listen_extra=" default_server"
+  fi
+
+  # Real IP from NPM / reverse proxy (optional; safe defaults)
+  local real_ip_block=""
+  if [[ "$BEHIND_PROXY" -eq 1 ]]; then
+    real_ip_block=$(cat <<'RIP'
+    real_ip_header X-Forwarded-For;
+    set_real_ip_from 10.0.0.0/8;
+    set_real_ip_from 172.16.0.0/12;
+    set_real_ip_from 192.168.0.0/16;
+    set_real_ip_from 127.0.0.1;
+RIP
+)
+  fi
 
   local body
   body=$(cat <<NGINX
 server {
-    listen 80 default_server;
-    listen [::]:80 default_server;
+    listen ${LISTEN_PORT}${listen_extra};
+    listen [::]:${LISTEN_PORT}${listen_extra};
     server_name ${SERVER_NAME};
     root ${public_dir};
     index index.php;
+
+${real_ip_block}
 
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header X-Content-Type-Options "nosniff" always;
@@ -459,6 +483,8 @@ while [[ $# -gt 0 ]]; do
     --skip-packages) SKIP_PACKAGES=1; shift ;;
     --with-db) WITH_DB=1; shift ;;
     --with-nginx) WITH_NGINX=1; shift ;;
+    --behind-proxy) BEHIND_PROXY=1; shift ;;
+    --listen-port) LISTEN_PORT="$2"; shift 2 ;;
     --server-name) SERVER_NAME="$2"; shift 2 ;;
     --migrate) MIGRATE=1; shift ;;
     --build-frontend) BUILD_FRONTEND=1; shift ;;
@@ -494,6 +520,20 @@ if [[ -z "$APP_URL" ]]; then
   else
     APP_URL="http://127.0.0.1:8000"
   fi
+fi
+
+# https://… implies reverse-proxy TLS termination unless explicitly skipped
+if [[ "$APP_URL" == https://* ]]; then
+  BEHIND_PROXY=1
+fi
+
+if [[ "$BEHIND_PROXY" -eq 1 && "$LISTEN_PORT" == "80" && "$WITH_NGINX" -eq 1 ]]; then
+  LISTEN_PORT="8080"
+  log "Behind proxy: Nginx will listen on ${LISTEN_PORT} (override with --listen-port)"
+fi
+
+if [[ "$SERVER_NAME" == "_" && "$APP_URL" == http*://* ]]; then
+  SERVER_NAME="$(printf '%s' "$APP_URL" | sed -e 's|^https://||' -e 's|^http://||' -e 's|/.*||')"
 fi
 
 if [[ "$WITH_DB" -eq 1 || "$MIGRATE" -eq 1 ]]; then
@@ -564,6 +604,13 @@ set_env_key .env DB_PORT "$DB_PORT"
 set_env_key .env DB_DATABASE "$DB_NAME"
 set_env_key .env DB_USERNAME "$DB_USER"
 set_env_key .env DB_PASSWORD "$DB_PASSWORD"
+
+if [[ "$BEHIND_PROXY" -eq 1 ]]; then
+  set_env_key .env TRUSTED_PROXIES "*"
+  if [[ "$APP_URL" == https://* ]]; then
+    set_env_key .env SESSION_SECURE_COOKIE "true"
+  fi
+fi
 
 log "Application key"
 "$PHP_BIN" artisan key:generate --force

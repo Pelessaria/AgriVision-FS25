@@ -14,14 +14,19 @@ Das Script installiert bei Bedarf per `apt`/`dnf`:
 - optional MariaDB (`--with-db`) inkl. DB + User  
 - optional Nginx (`--with-nginx`) inkl. Site-Config auf `backend/public`
 
+Hinter **Nginx Proxy Manager** (Beispiel `agrivision.pelessaria.de`):
+
 ```bash
 curl -fsSL https://cdn.jsdelivr.net/gh/Pelessaria/AgriVision-FS25@main/scripts/install.sh -o install.sh
 chmod +x install.sh
 sudo ./install.sh --target /var/www/agrivision \
-  --with-db --with-nginx --migrate \
-  --db-name agrivision --db-user agrivision --db-password 'secret' \
-  --app-url http://YOUR_SERVER_IP
+  --with-db --with-nginx --behind-proxy --listen-port 8080 --migrate \
+  --db-password 'secret' \
+  --app-url https://agrivision.pelessaria.de \
+  --server-name agrivision.pelessaria.de
 ```
+
+NPM: Proxy Host → `http://VPS_IP:8080`, SSL/Force SSL für die Domain. Details: [REVERSE-PROXY.md](REVERSE-PROXY.md).
 
 Ohne Nginx (nur PHP built-in server):
 
