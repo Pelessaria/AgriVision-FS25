@@ -544,6 +544,13 @@ export function SettingsPage() {
                 !updateStatus?.updateAvailable ||
                 updateStatus.source !== "api"
               }
+              title={
+                updateStatus?.source !== "api"
+                  ? t("settings.updateApplyDemo")
+                  : updateStatus && !updateStatus.updateAvailable
+                    ? t("settings.updateApplyDisabledCurrent")
+                    : undefined
+              }
               onClick={() => void runUpdateApply()}
             >
               {updateApplying ? t("settings.updateApplying") : t("settings.updateApply")}
@@ -552,6 +559,9 @@ export function SettingsPage() {
               {t("settings.updateOpenRepo")}
             </a>
           </div>
+          {updateStatus?.source === "api" && !updateStatus.updateAvailable && !updateChecking ? (
+            <p className="hint">{t("settings.updateApplyDisabledCurrent")}</p>
+          ) : null}
         </section>
       ) : null}
 
