@@ -64,12 +64,19 @@ export function WorkspaceHomePage() {
   const farm = selectedFarm(workspace.id)
   const notice = workspace.disabled ? "disabled" : workspace.notice
   const shortcuts = APP_MODULES.filter((module) => moduleAccess(workspace.id, module.id))
-  const demoFarmVehicles = farm
-    ? vehicles.filter((item) => item.workspaceId === workspace.id && item.farmId === farm.gameFarmId)
-    : []
+  const farmVehicles = (() => {
+    const source = liveMode ? (feedVehicles ?? vehicles) : vehicles
+    return source.filter((item) => {
+      if (item.workspaceId !== workspace.id) return false
+      if (!farm) return true
+      return item.farmId !== null && Number(item.farmId) === Number(farm.gameFarmId)
+    })
+  })()
   const equipmentCount = liveMode
-    ? (feedVehicles?.length ?? (feedBusy ? null : 0))
-    : demoFarmVehicles.length
+    ? feedVehicles === null && feedBusy
+      ? null
+      : farmVehicles.length
+    : farmVehicles.length
   const entries = activity
     .filter((item) => item.workspaceId === workspace.id)
     .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))

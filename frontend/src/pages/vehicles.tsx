@@ -75,11 +75,9 @@ export function VehiclesPage() {
     const needle = query.trim().toLocaleLowerCase()
     return vehicles
       .filter((vehicle) => vehicle.workspaceId === id)
-      // Stats feed has no farmId yet — do not hide the whole list behind a farm filter.
       .filter((vehicle) => {
         if (!farm) return true
-        if (vehicle.farmId === null) return true
-        return vehicle.farmId === farm.gameFarmId
+        return vehicle.farmId !== null && Number(vehicle.farmId) === Number(farm.gameFarmId)
       })
       .filter((vehicle) => matchesFilter(vehicle, filter))
       .filter((vehicle) => (needle ? vehicle.name.toLocaleLowerCase().includes(needle) : true))
