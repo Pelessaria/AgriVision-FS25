@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
 
         User::factory()->create([
             'name' => 'Admin',
+            'username' => 'admin',
             'email' => 'admin@agrivision.local',
             'password' => 'password',
             'global_role' => 'admin',

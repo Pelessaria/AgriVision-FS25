@@ -4,12 +4,14 @@ namespace App\Console\Commands;
 
 use App\Models\User;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class EnsureAdminCommand extends Command
 {
     protected $signature = 'agrivision:admin
         {--email= : Admin email (default: admin@agrivision.local)}
+        {--username= : Admin username (default: from email local-part)}
         {--password= : Admin password (generated if omitted)}
         {--name= : Display name (default: Admin)}';
 
@@ -39,26 +41,47 @@ class EnsureAdminCommand extends Command
             return self::FAILURE;
         }
 
-        // User model casts password to hashed — pass plaintext once.
+        $username = $this->normalizeUsername(
+            (string) ($this->option('username') ?: Str::before($email, '@'))
+        );
+        if ($username === null) {
+            $this->error('Invalid username. Use 2–64 chars: letters, digits, . _ -');
+
+            return self::FAILURE;
+        }
+
+        $payload = [
+            'name' => $name !== '' ? $name : 'Admin',
+            'email' => $email,
+            'password' => $password,
+            'global_role' => 'admin',
+        ];
+        if (Schema::hasColumn('users', 'username')) {
+            $taken = User::query()
+                ->whereRaw('LOWER(username) = ?', [mb_strtolower($username, 'UTF-8')])
+                ->where('email', '!=', $email)
+                ->exists();
+            if ($taken) {
+                $this->error("Username already taken: {$username}");
+
+                return self::FAILURE;
+            }
+            $payload['username'] = $username;
+        }
+
         $user = User::query()->where('email', $email)->first();
         if ($user) {
-            $user->forceFill([
-                'name' => $name !== '' ? $name : $user->name,
-                'password' => $password,
-                'global_role' => 'admin',
-            ])->save();
+            $user->forceFill($payload)->save();
             $this->info("Updated admin: {$email}");
         } else {
-            User::query()->create([
-                'name' => $name !== '' ? $name : 'Admin',
-                'email' => $email,
-                'password' => $password,
-                'global_role' => 'admin',
-            ]);
+            User::query()->create($payload);
             $this->info("Created admin: {$email}");
         }
 
         $this->line('Email:    '.$email);
+        if (isset($payload['username'])) {
+            $this->line('Username: '.$payload['username']);
+        }
         if ($generated) {
             $this->warn('Password: '.$password);
             $this->warn('Store this password now — it will not be shown again.');
@@ -67,5 +90,15 @@ class EnsureAdminCommand extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    private function normalizeUsername(string $raw): ?string
+    {
+        $username = strtolower(trim($raw));
+        if (! preg_match('/^[a-z0-9._-]{2,64}$/', $username)) {
+            return null;
+        }
+
+        return $username;
     }
 }

@@ -7,21 +7,31 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
     public function login(Request $request): JsonResponse
     {
-        $credentials = $request->validate([
-            'email' => ['required', 'email'],
+        $data = $request->validate([
+            // Prefer "login"; keep "email" for older clients.
+            'login' => ['nullable', 'string', 'min:2', 'max:255'],
+            'email' => ['nullable', 'string', 'min:2', 'max:255'],
             'password' => ['required', 'string'],
         ]);
 
-        $user = User::query()->where('email', $credentials['email'])->first();
-        if (! $user || ! Hash::check($credentials['password'], $user->password)) {
+        $login = trim((string) ($data['login'] ?? $data['email'] ?? ''));
+        if ($login === '') {
             throw ValidationException::withMessages([
-                'email' => ['Anmeldung fehlgeschlagen.'],
+                'login' => ['Benutzername oder E-Mail erforderlich.'],
+            ]);
+        }
+
+        $user = $this->findByLogin($login);
+        if (! $user || ! Hash::check($data['password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'login' => ['Anmeldung fehlgeschlagen.'],
             ]);
         }
 
@@ -54,6 +64,20 @@ class AuthController extends Controller
         ]);
     }
 
+    private function findByLogin(string $login): ?User
+    {
+        $normalized = mb_strtolower($login, 'UTF-8');
+
+        return User::query()
+            ->where(function ($query) use ($normalized) {
+                $query->whereRaw('LOWER(email) = ?', [$normalized]);
+                if (Schema::hasColumn('users', 'username')) {
+                    $query->orWhereRaw('LOWER(username) = ?', [$normalized]);
+                }
+            })
+            ->first();
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -64,14 +88,17 @@ class AuthController extends Controller
         $first = $parts[0] ?? '';
         $last = trim(implode(' ', array_slice($parts, 1)));
         $role = ($user->global_role ?? 'admin') === 'member' ? 'member' : 'admin';
+        $username = trim((string) ($user->username ?? ''));
+        $alias = $username !== '' ? $username : ($first !== '' ? $first : (string) $user->email);
 
         return [
             'id' => (string) $user->id,
             'name' => $name !== '' ? $name : (string) $user->email,
+            'username' => $username !== '' ? $username : null,
             'email' => (string) $user->email,
             'firstName' => $first,
             'lastName' => $last,
-            'alias' => $first !== '' ? $first : (string) $user->email,
+            'alias' => $alias,
             'notificationEmail' => (string) $user->email,
             'avatarDataUrl' => null,
             'twoFactorEnabled' => false,

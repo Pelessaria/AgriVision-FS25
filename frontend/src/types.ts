@@ -31,6 +31,7 @@ export interface ModuleGrant {
 export interface AppUser {
   id: string
   name: string
+  username?: string | null
   email: string
   firstName: string
   lastName: string

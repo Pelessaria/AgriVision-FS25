@@ -36,6 +36,7 @@ DB_CONNECTION="mariadb"
 APP_URL=""
 APP_NAME="AgriVision"
 ADMIN_EMAIL="admin@agrivision.local"
+ADMIN_USERNAME="admin"
 ADMIN_PASSWORD=""
 PHP_BIN=""
 SERVER_NAME="_"
@@ -69,6 +70,7 @@ Options:
   --app-url URL         Public URL, e.g. https://agrivision.pelessaria.de
   --app-name NAME       APP_NAME (default: AgriVision)
   --admin-email EMAIL   Admin login email (default: admin@agrivision.local)
+  --admin-username NAME Admin username (default: admin)
   --admin-password PASS Admin login password (generated if omitted with --migrate)
   --migrate             Run php artisan migrate --force (+ ensure admin user)
   --build-frontend      npm ci && npm run build (needs Node)
@@ -541,6 +543,7 @@ while [[ $# -gt 0 ]]; do
     --app-url) APP_URL="$2"; shift 2 ;;
     --app-name) APP_NAME="$2"; shift 2 ;;
     --admin-email) ADMIN_EMAIL="$2"; shift 2 ;;
+    --admin-username) ADMIN_USERNAME="$2"; shift 2 ;;
     --admin-password) ADMIN_PASSWORD="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown argument: $1 (try --help)" ;;
@@ -736,6 +739,7 @@ if [[ "$MIGRATE" -eq 1 ]]; then
   fi
   "$PHP_BIN" artisan agrivision:admin \
     --email="$ADMIN_EMAIL" \
+    --username="$ADMIN_USERNAME" \
     --password="$ADMIN_PASSWORD" \
     --name="Admin"
 fi
@@ -785,24 +789,25 @@ fi
 cat <<EOF
 
 Login:
-  URL:   ${APP_URL}/login
-  Email: ${ADMIN_EMAIL}
+  URL:      ${APP_URL}/login
+  Email:    ${ADMIN_EMAIL}
+  Username: ${ADMIN_USERNAME}
 EOF
 
 if [[ -n "${ADMIN_PASSWORD_SHOWN}" ]]; then
   cat <<EOF
-  Pass:  ${ADMIN_PASSWORD_SHOWN}
+  Pass:     ${ADMIN_PASSWORD_SHOWN}
   (generated — change after first login)
 EOF
 elif [[ "$MIGRATE" -eq 1 ]]; then
   cat <<EOF
-  Pass:  (the --admin-password you set)
+  Pass:     (the --admin-password you set)
 EOF
 else
   cat <<EOF
   Create/reset admin:
     cd ${BACKEND}
-    ${PHP_BIN} artisan agrivision:admin --email=you@example.com --password='YourSecret'
+    ${PHP_BIN} artisan agrivision:admin --email=you@example.com --username=admin --password='YourSecret'
 EOF
 fi
 

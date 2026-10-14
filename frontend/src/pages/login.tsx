@@ -5,7 +5,7 @@ import { LoaderCircle } from "lucide-react"
 import { BrandMark } from "../components/ui"
 import { i18n } from "../i18n"
 import { useStore } from "../store"
-import { isEmail } from "../validate"
+import { isLoginId } from "../validate"
 
 function chooseLocale(lng: "de" | "en") {
   void i18n.changeLanguage(lng)
@@ -17,9 +17,9 @@ export function LoginPage() {
   const { t, i18n: current } = useTranslation()
   const navigate = useNavigate()
   const { sessionUserId, signIn, liveMode, ready } = useStore()
-  const [email, setEmail] = useState("")
+  const [login, setLogin] = useState("")
   const [password, setPassword] = useState("")
-  const [emailError, setEmailError] = useState("")
+  const [loginError, setLoginError] = useState("")
   const [passwordError, setPasswordError] = useState("")
   const [formError, setFormError] = useState("")
   const [pending, setPending] = useState(false)
@@ -38,15 +38,15 @@ export function LoginPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault()
-    const nextEmail = isEmail(email) ? "" : t("login.emailInvalid")
+    const nextLogin = isLoginId(login) ? "" : t("login.loginInvalid")
     const nextPassword = password.length >= 8 ? "" : t("login.passwordShort")
-    setEmailError(nextEmail)
+    setLoginError(nextLogin)
     setPasswordError(nextPassword)
     setFormError("")
-    if (nextEmail || nextPassword) return
+    if (nextLogin || nextPassword) return
     setPending(true)
     try {
-      const result = await signIn(email.trim(), password)
+      const result = await signIn(login.trim(), password)
       if (result === "failed") {
         setFormError(t("login.failed"))
         return
@@ -88,15 +88,17 @@ export function LoginPage() {
               </p>
             ) : null}
             <label className="field">
-              <span>{t("login.email")}</span>
+              <span>{t("login.login")}</span>
               <input
-                type="email"
+                type="text"
                 autoComplete="username"
-                value={email}
-                aria-invalid={emailError ? true : undefined}
-                onChange={(event) => setEmail(event.target.value)}
+                inputMode="text"
+                spellCheck={false}
+                value={login}
+                aria-invalid={loginError ? true : undefined}
+                onChange={(event) => setLogin(event.target.value)}
               />
-              {emailError ? <span className="field-error">{emailError}</span> : null}
+              {loginError ? <span className="field-error">{loginError}</span> : null}
             </label>
             <label className="field">
               <span>{t("login.password")}</span>

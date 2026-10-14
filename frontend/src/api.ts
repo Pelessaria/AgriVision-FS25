@@ -70,10 +70,10 @@ export async function apiMe(): Promise<AppUser | null> {
   }
 }
 
-export async function apiLogin(email: string, password: string): Promise<AppUser> {
+export async function apiLogin(login: string, password: string): Promise<AppUser> {
   const data = await apiFetch<{ user: AppUser }>("/api/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ login, email: login, password }),
   })
   return data.user
 }
