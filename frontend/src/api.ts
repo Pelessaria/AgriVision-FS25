@@ -156,7 +156,15 @@ export async function apiWorkspaceSyncIcons(
   id: string,
 ): Promise<{
   ok: boolean
-  iconSync: { downloaded: number; skipped: string | null; pending: number; errors?: number }
+  iconSync: {
+    downloaded: number
+    converted?: number
+    skipped: string | null
+    pending: number
+    errors?: number
+    listed?: number
+    detail?: string | null
+  }
 }> {
   return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/connector/icons/sync`, {
     method: "POST",

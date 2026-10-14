@@ -36,10 +36,23 @@ final class DdsToPng
             $rgba = self::decodeBgra($data, $width, $height);
         }
 
-        if ($rgba === null || ! function_exists('imagecreatetruecolor')) {
+        if ($rgba === null) {
             return null;
         }
 
+        // Shared hosts often lack php-gd — encode PNG via zlib instead.
+        if (function_exists('imagecreatetruecolor')) {
+            $viaGd = self::encodePngWithGd($rgba, $width, $height);
+            if ($viaGd !== null) {
+                return $viaGd;
+            }
+        }
+
+        return self::encodePngRgba($rgba, $width, $height);
+    }
+
+    private static function encodePngWithGd(string $rgba, int $width, int $height): ?string
+    {
         $img = imagecreatetruecolor($width, $height);
         if ($img === false) {
             return null;
@@ -67,6 +80,40 @@ final class DdsToPng
         $png = ob_get_clean();
 
         return is_string($png) && $png !== '' ? $png : null;
+    }
+
+    /** Uncompressed-filter PNG (RGBA) — no GD required. */
+    private static function encodePngRgba(string $rgba, int $width, int $height): ?string
+    {
+        if (! function_exists('gzcompress')) {
+            return null;
+        }
+        $need = $width * $height * 4;
+        if (strlen($rgba) < $need) {
+            return null;
+        }
+
+        $raw = '';
+        for ($y = 0; $y < $height; $y++) {
+            $raw .= "\x00";
+            $raw .= substr($rgba, $y * $width * 4, $width * 4);
+        }
+        $compressed = gzcompress($raw, 6);
+        if ($compressed === false) {
+            return null;
+        }
+
+        $ihdr = pack('NNCCCCC', $width, $height, 8, 6, 0, 0, 0); // 8-bit RGBA
+
+        return "\x89PNG\r\n\x1a\n"
+            .self::pngChunk('IHDR', $ihdr)
+            .self::pngChunk('IDAT', $compressed)
+            .self::pngChunk('IEND', '');
+    }
+
+    private static function pngChunk(string $type, string $data): string
+    {
+        return pack('N', strlen($data)).$type.$data.hash('crc32b', $type.$data, true);
     }
 
     private static function decodeBgra(string $data, int $width, int $height): ?string

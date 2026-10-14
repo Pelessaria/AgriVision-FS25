@@ -77,18 +77,67 @@ final class CurlFtpClient
     public function listNames(string $path = ''): array
     {
         $url = $this->urlForPath($path, true);
-        $body = $this->exec($url, [
-            CURLOPT_DIRLISTONLY => true,
-        ], 'LIST');
 
-        $names = preg_split('/\r\n|\n|\r/', trim($body)) ?: [];
-        $out = [];
-        foreach ($names as $name) {
-            $name = trim($name);
-            if ($name === '' || str_contains($name, '/')) {
-                // Some servers return "dir/" or full paths — take basename.
-                $name = basename(str_replace('\\', '/', $name));
+        // Prefer NLST/DIRLISTONLY; many FTPS hosts return empty or a full LIST instead.
+        try {
+            $body = $this->exec($url, [
+                CURLOPT_DIRLISTONLY => true,
+            ], 'NLST '.$path);
+            $names = $this->parseNlstBody($body);
+            if ($names !== []) {
+                return $names;
             }
+        } catch (RuntimeException) {
+            // Fall through to full LIST.
+        }
+
+        $body = $this->exec($url, [], 'LIST '.$path);
+
+        return $this->parseListBody($body);
+    }
+
+    public function fileExists(string $path): bool
+    {
+        // Avoid downloading the whole file: LIST parent and match basename.
+        $normalized = $this->normalizePath($path);
+        if ($normalized === '') {
+            return false;
+        }
+        $parent = dirname(str_replace('\\', '/', $normalized));
+        if ($parent === '.' || $parent === '/') {
+            $parent = '';
+        }
+        $base = basename(str_replace('\\', '/', $normalized));
+        try {
+            foreach ($this->listNames($parent) as $name) {
+                if (strcasecmp($name, $base) === 0) {
+                    return true;
+                }
+            }
+        } catch (RuntimeException) {
+            return false;
+        }
+
+        return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function parseNlstBody(string $body): array
+    {
+        $lines = preg_split('/\r\n|\n|\r/', trim($body)) ?: [];
+        $out = [];
+        foreach ($lines as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            // Server ignored DIRLISTONLY and returned Unix/Windows LIST — use parseListBody.
+            if ($this->looksLikeListLine($line)) {
+                return $this->parseListBody($body);
+            }
+            $name = basename(str_replace('\\', '/', $line));
             if ($name !== '' && $name !== '.' && $name !== '..') {
                 $out[] = $name;
             }
@@ -97,15 +146,62 @@ final class CurlFtpClient
         return array_values(array_unique($out));
     }
 
-    public function fileExists(string $path): bool
+    /**
+     * @return list<string>
+     */
+    private function parseListBody(string $body): array
     {
-        try {
-            $this->read($path);
-
-            return true;
-        } catch (RuntimeException) {
-            return false;
+        $lines = preg_split('/\r\n|\n|\r/', trim($body)) ?: [];
+        $out = [];
+        foreach ($lines as $line) {
+            $line = rtrim($line);
+            if ($line === '') {
+                continue;
+            }
+            $name = $this->nameFromListLine($line);
+            if ($name !== null) {
+                $out[] = $name;
+            }
         }
+
+        return array_values(array_unique($out));
+    }
+
+    private function looksLikeListLine(string $line): bool
+    {
+        return (bool) preg_match('/^(?:[bcdlps-][rwxstSTlL-]{9}|[A-Za-z]{3}\s+\d{1,2}\s|[\d-]{8}\s+[\d:]{5}|\d{2}-\d{2}-\d{2}\s)/', $line)
+            || str_contains($line, '<DIR>');
+    }
+
+    private function nameFromListLine(string $line): ?string
+    {
+        // Windows IIS: "01-15-25  12:00PM       1234 filename.dds" / "<DIR> folder"
+        if (preg_match('/^\d{2}-\d{2}-\d{2}\s+\d{1,2}:\d{2}(?:AM|PM)\s+(?:<DIR>|\d+)\s+(.+)$/i', $line, $m)) {
+            $name = trim($m[1]);
+
+            return ($name !== '' && $name !== '.' && $name !== '..') ? $name : null;
+        }
+
+        // Unix/FileZilla: permissions … name (last field; names rarely have spaces for store icons)
+        if (preg_match('/^[bcdlps-][rwxstSTlL-]{9}\s+\d+\s+\S+\s+\S+\s+\d+\s+\S+\s+\d+\s+\S+\s+(.+)$/', $line, $m)
+            || preg_match('/^[bcdlps-][rwxstSTlL-]{9}\s+\d+\s+\S+\s+\S+\s+\d+\s+\S+\s+\d{1,2}\s+\d{2}:\d{2}\s+(.+)$/', $line, $m)) {
+            $name = trim($m[1]);
+
+            return ($name !== '' && $name !== '.' && $name !== '..') ? $name : null;
+        }
+
+        // Fallback: last whitespace-separated token if line looks structured
+        if ($this->looksLikeListLine($line)) {
+            $parts = preg_split('/\s+/', trim($line)) ?: [];
+            $name = (string) end($parts);
+            $name = basename(str_replace('\\', '/', $name));
+
+            return ($name !== '' && $name !== '.' && $name !== '..') ? $name : null;
+        }
+
+        $name = basename(str_replace('\\', '/', trim($line)));
+
+        return ($name !== '' && $name !== '.' && $name !== '..') ? $name : null;
     }
 
     public function read(string $path): string

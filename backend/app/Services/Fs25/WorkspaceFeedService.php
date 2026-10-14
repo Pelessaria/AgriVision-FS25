@@ -206,14 +206,10 @@ final class WorkspaceFeedService
                 $filename = $vehicle['filename'] ?? null;
                 $storeKey = $vehicle['storeKey'] ?? StoreKey::fromFilename(is_string($filename) ? $filename : null);
                 $modKey = $vehicle['modKey'] ?? ModKey::fromFilename(is_string($filename) ? $filename : null);
-                // Only expose icon URLs that already exist locally — never trigger FTP from <img>.
+                // Browser-ready cache only — never set iconUrl for DDS-only (convert may fail).
                 $iconUrl = null;
-                if (is_string($storeKey) && $storeKey !== '') {
-                    $localIcon = $iconCache->localPath($workspace, $storeKey)
-                        ?? $connectorService->cachedIconPath($workspace, $storeKey);
-                    if ($localIcon !== null) {
-                        $iconUrl = $iconCache->publicUrl($workspace, $storeKey);
-                    }
+                if (is_string($storeKey) && $storeKey !== '' && $iconCache->localPath($workspace, $storeKey) !== null) {
+                    $iconUrl = $iconCache->publicUrl($workspace, $storeKey);
                 }
                 $vehicles[] = [
                     'id' => $unique

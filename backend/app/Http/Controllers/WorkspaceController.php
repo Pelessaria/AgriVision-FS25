@@ -159,8 +159,10 @@ class WorkspaceController extends Controller
         $row = $this->findWorkspace($workspace);
         $result = $connector->syncStoreIconsIfDue($row);
 
+        $progress = ($result['downloaded'] ?? 0) > 0 || ($result['converted'] ?? 0) > 0;
+
         return response()->json([
-            'ok' => $result['skipped'] === null || $result['downloaded'] > 0,
+            'ok' => $result['skipped'] === null || $progress,
             'iconSync' => $result,
         ]);
     }

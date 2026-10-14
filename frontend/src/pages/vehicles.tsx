@@ -78,8 +78,9 @@ export function VehiclesPage() {
           if (cancelled) return
           const pending = sync.iconSync?.pending ?? 0
           const downloaded = sync.iconSync?.downloaded ?? 0
+          const converted = sync.iconSync?.converted ?? 0
           const errors = sync.iconSync?.errors ?? 0
-          if (downloaded > 0) {
+          if (downloaded > 0 || converted > 0) {
             await refreshVehicles(false)
           }
           if (sync.iconSync?.skipped === "throttled") {
@@ -90,7 +91,7 @@ export function VehiclesPage() {
           }
           if (pending <= 0) return
           // All attempts in this batch failed — back off instead of spinning.
-          if (downloaded === 0 && errors > 0) {
+          if (downloaded === 0 && converted === 0 && errors > 0) {
             pollTimer = setTimeout(() => {
               void pullIcons()
             }, 15_000)
