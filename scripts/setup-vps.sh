@@ -679,6 +679,25 @@ if id -u "$web_user" >/dev/null 2>&1; then
   run_root chmod 640 .env || true
 fi
 
+deploy_frontend() {
+  local dist="${ROOT}/frontend/dist"
+  local pub="${BACKEND}/public"
+  [[ -f "${dist}/index.html" ]] || return 1
+
+  log "Deploying frontend into public/ (SPA at /)"
+  mkdir -p "${pub}/assets"
+  if [[ -d "${dist}/assets" ]]; then
+    cp -a "${dist}/assets/." "${pub}/assets/"
+  fi
+  # Static files referenced as /favicon.svg etc.
+  for f in favicon.svg favicon-light.svg logo.svg; do
+    [[ -f "${dist}/${f}" ]] && cp -a "${dist}/${f}" "${pub}/${f}"
+  done
+  # Do not overwrite Laravel public/index.php
+  cp -a "${dist}/index.html" "${pub}/agrivision.html"
+  return 0
+}
+
 if [[ "$BUILD_FRONTEND" -eq 1 ]]; then
   need_cmd npm
   log "Building frontend"
@@ -687,14 +706,10 @@ if [[ "$BUILD_FRONTEND" -eq 1 ]]; then
     npm ci
     npm run build
   )
-  mkdir -p "${BACKEND}/public/app"
-  cp -a "${ROOT}/frontend/dist/." "${BACKEND}/public/app/"
 fi
 
-if [[ -d "${ROOT}/frontend/dist" && ! -f "${BACKEND}/public/app/index.html" ]]; then
-  log "Copying frontend/dist -> backend/public/app"
-  mkdir -p "${BACKEND}/public/app"
-  cp -a "${ROOT}/frontend/dist/." "${BACKEND}/public/app/"
+if ! deploy_frontend; then
+  log "No frontend/dist found - Laravel welcome page will show until UI is deployed"
 fi
 
 if [[ "$MIGRATE" -eq 1 ]]; then
