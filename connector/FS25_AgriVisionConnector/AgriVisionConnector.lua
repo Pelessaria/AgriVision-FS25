@@ -12,10 +12,11 @@
 
 AgriVisionConnector = {}
 AgriVisionConnector.MOD_NAME = "FS25_AgriVisionConnector"
-AgriVisionConnector.VERSION = "0.1.2.4"
+AgriVisionConnector.VERSION = "0.1.2.5"
 AgriVisionConnector.SCHEMA = "1"
 AgriVisionConnector.TICK_MS = 5000
 AgriVisionConnector.FULL_VEHICLE_EVERY_MS = 60000
+AgriVisionConnector.WAIT_LOG_EVERY_MS = 30000
 
 local function log(msg)
     print(string.format("AgriVisionConnector: %s", tostring(msg)))
@@ -44,7 +45,9 @@ function AgriVisionConnector:init()
 
     self.active = true
     self.generation = 0
-    self.lastTickAt = 0
+    self.tickAccumMs = 0
+    self.fullAccumMs = 0
+    self.waitLogAccumMs = 0
     self.lastFullVehiclesAt = 0
     self.processedCommands = {}
 
@@ -417,8 +420,20 @@ function AgriVisionConnector:missionVehicles()
     if g_currentMission == nil then
         return nil
     end
-    if g_currentMission.vehicleSystem ~= nil and g_currentMission.vehicleSystem.vehicles ~= nil then
-        return g_currentMission.vehicleSystem.vehicles
+    local vs = g_currentMission.vehicleSystem
+    if vs ~= nil then
+        if vs.vehicles ~= nil then
+            return vs.vehicles
+        end
+        -- Some builds expose vehicles only via getter.
+        if vs.getVehicles ~= nil then
+            local ok, list = pcall(function()
+                return vs:getVehicles()
+            end)
+            if ok and list ~= nil then
+                return list
+            end
+        end
     end
     if g_currentMission.vehicles ~= nil then
         return g_currentMission.vehicles
@@ -426,17 +441,33 @@ function AgriVisionConnector:missionVehicles()
     return nil
 end
 
-function AgriVisionConnector:missionHasVehicles()
-    local vehiclesTable = self:missionVehicles()
+function AgriVisionConnector:countVehicles(vehiclesTable)
     if vehiclesTable == nil then
-        return false
+        return 0
     end
+    local n = 0
     for _, vehicle in pairs(vehiclesTable) do
         if vehicle ~= nil then
-            return true
+            n = n + 1
         end
     end
-    return false
+    return n
+end
+
+function AgriVisionConnector:missionHasVehicles()
+    return self:countVehicles(self:missionVehicles()) > 0
+end
+
+function AgriVisionConnector:missionReadyHint()
+    if g_currentMission == nil then
+        return "g_currentMission=nil"
+    end
+    local vs = g_currentMission.vehicleSystem
+    if vs == nil then
+        return "vehicleSystem=nil"
+    end
+    local n = self:countVehicles(self:missionVehicles())
+    return string.format("vehicles=%s", tostring(n))
 end
 
 function AgriVisionConnector:fileLooksPresent(path)
@@ -585,22 +616,46 @@ function AgriVisionConnector:processCommands()
     self:writeTextFile(self.baseDir .. "command_result.xml", result)
 end
 
-function AgriVisionConnector:update(dt)
+function AgriVisionConnector:tick(dt)
     if not self.active then
         return
     end
-    local now = g_time or 0
-    if now - self.lastTickAt < self.TICK_MS then
+    -- Prefer frame dt; dedicated g_time can stay 0 and starved the old throttle.
+    local step = tonumber(dt) or 0
+    if step < 0 then
+        step = 0
+    end
+    -- Engine sometimes reports seconds.
+    if step > 0 and step < 1 then
+        step = step * 1000
+    end
+    -- If called with nil/0 dt, still advance so a live hook eventually fires work.
+    if step <= 0 then
+        step = 16
+    end
+
+    self.tickAccumMs = (self.tickAccumMs or 0) + step
+    if self.tickAccumMs < self.TICK_MS then
         return
     end
-    self.lastTickAt = now
+    self.tickAccumMs = 0
+    self.fullAccumMs = (self.fullAccumMs or 0) + self.TICK_MS
+    self.waitLogAccumMs = (self.waitLogAccumMs or 0) + self.TICK_MS
 
     local ok, err = pcall(function()
         self:writeHello()
         self:processCommands()
-        -- First successful scan as soon as vehicles exist; then every FULL_VEHICLE_EVERY_MS.
-        local due = (not self.vehiclesPrimed) or (now - self.lastFullVehiclesAt >= self.FULL_VEHICLE_EVERY_MS)
-        if due and self:missionHasVehicles() then
+        local hasVehicles = self:missionHasVehicles()
+        if not self.vehiclesPrimed and not hasVehicles then
+            if self.waitLogAccumMs >= self.WAIT_LOG_EVERY_MS then
+                self.waitLogAccumMs = 0
+                log("waiting for vehicles (" .. self:missionReadyHint() .. ")")
+            end
+            return
+        end
+        local due = (not self.vehiclesPrimed) or (self.fullAccumMs >= self.FULL_VEHICLE_EVERY_MS)
+        if due and hasVehicles then
+            self.fullAccumMs = 0
             self:writeVehiclesFull()
             self.vehiclesPrimed = true
         end
@@ -610,11 +665,30 @@ function AgriVisionConnector:update(dt)
     end
 end
 
--- Bootstrap: register listener first; init only creates dirs + hello (no vehicle scan yet).
-addModEventListener({
-    update = function(_, dt)
-        AgriVisionConnector:update(dt)
-    end,
-})
+function AgriVisionConnector:installMissionHook()
+    if self.missionHookInstalled then
+        return
+    end
+    if FSBaseMission == nil or Utils == nil or Utils.appendedFunction == nil then
+        return
+    end
+    FSBaseMission.update = Utils.appendedFunction(FSBaseMission.update, function(_, dt)
+        AgriVisionConnector:tick(dt)
+    end)
+    self.missionHookInstalled = true
+    log("FSBaseMission.update hook installed")
+end
 
+-- addModEventListener calls listener:update(dt). Also keep FSBaseMission hook as backup
+-- (dedicated servers have been observed to skip mod listeners after load).
+function AgriVisionConnector:update(dt)
+    self:installMissionHook()
+    self:tick(dt)
+end
+
+-- Strong self-reference so the listener table cannot be GC'd.
+AgriVisionConnector._listener = AgriVisionConnector
+addModEventListener(AgriVisionConnector)
+AgriVisionConnector:installMissionHook()
 AgriVisionConnector:init()
+log("listener registered (missionHook=" .. tostring(AgriVisionConnector.missionHookInstalled == true) .. ")")
