@@ -12,7 +12,7 @@
 
 AgriVisionConnector = {}
 AgriVisionConnector.MOD_NAME = "FS25_AgriVisionConnector"
-AgriVisionConnector.VERSION = "0.1.2.3"
+AgriVisionConnector.VERSION = "0.1.2.4"
 AgriVisionConnector.SCHEMA = "1"
 AgriVisionConnector.TICK_MS = 5000
 AgriVisionConnector.FULL_VEHICLE_EVERY_MS = 60000
@@ -55,6 +55,9 @@ function AgriVisionConnector:init()
     self.storeIconsDir = self.iconsDir .. "store/"
     self.modIconsDir = self.iconsDir .. "mods/"
     self.pendingStoreIcons = {}
+    -- Vehicles/store icons must wait until the mission has spawned the fleet.
+    -- Mod load runs before the savegame — scanning here always yields unique=0.
+    self.vehiclesPrimed = false
 
     ensureDir(profile .. "modSettings/")
     ensureDir(self.baseDir)
@@ -65,7 +68,6 @@ function AgriVisionConnector:init()
 
     log("active, baseDir=" .. self.baseDir)
     self:writeHello()
-    self:writeVehiclesFull()
 end
 
 function AgriVisionConnector:nextGeneration()
@@ -173,16 +175,7 @@ end
 function AgriVisionConnector:collectVehiclesFullXml()
     local parts = {}
     self.pendingStoreIcons = {}
-    if g_currentMission == nil then
-        return "    <!-- mission unavailable -->\n"
-    end
-
-    local vehiclesTable = nil
-    if g_currentMission.vehicleSystem ~= nil and g_currentMission.vehicleSystem.vehicles ~= nil then
-        vehiclesTable = g_currentMission.vehicleSystem.vehicles
-    elseif g_currentMission.vehicles ~= nil then
-        vehiclesTable = g_currentMission.vehicles
-    end
+    local vehiclesTable = self:missionVehicles()
     if vehiclesTable == nil then
         return "    <!-- vehicle list unavailable on this build -->\n"
     end
@@ -285,6 +278,11 @@ end
 
 function AgriVisionConnector:writeVehiclesFull()
     local gen = self:nextGeneration()
+    local vehiclesXml = self:collectVehiclesFullXml()
+    local pendingCount = 0
+    for _ in pairs(self.pendingStoreIcons or {}) do
+        pendingCount = pendingCount + 1
+    end
     local body = string.format(
         [[<?xml version="1.0" encoding="utf-8"?>
 <vehiclesFull schema="%s" generation="%s" writtenAtUtc="%s" kind="full">
@@ -293,9 +291,10 @@ function AgriVisionConnector:writeVehiclesFull()
         self.SCHEMA,
         tostring(gen),
         self:xmlEscape(utcNow()),
-        self:collectVehiclesFullXml()
+        vehiclesXml
     )
     self:writeTextFile(self.stateDir .. "vehicles_full.xml", body)
+    log(string.format("vehicles_full written storeIconCandidates=%s", tostring(pendingCount)))
     self:writeStoreIconsManifest()
     self.lastFullVehiclesAt = g_time or 0
 end
@@ -337,13 +336,64 @@ function AgriVisionConnector:storeKeyFromFilename(filename)
     return path
 end
 
+function AgriVisionConnector:resolveStoreImagePath(raw)
+    if raw == nil then
+        return nil
+    end
+    local path = tostring(raw)
+    if path == "" then
+        return nil
+    end
+    -- Already absolute / readable.
+    if self:fileLooksPresent(path) then
+        return path
+    end
+    -- GIANTS often stores relative or $data/… paths; Utils.getFilename expands them.
+    if Utils ~= nil and Utils.getFilename ~= nil then
+        local ok, resolved = pcall(function()
+            return Utils.getFilename(path, "")
+        end)
+        if ok and resolved ~= nil and tostring(resolved) ~= "" then
+            local r = tostring(resolved)
+            if self:fileLooksPresent(r) or copyFile ~= nil then
+                return r
+            end
+        end
+    end
+    -- Strip $data/ and try under game install if getAppBasePath exists.
+    local stripped = path
+    if string.sub(stripped, 1, 6) == "$data/" then
+        stripped = "data/" .. string.sub(stripped, 7)
+    elseif string.sub(stripped, 1, 5) == "$data" then
+        stripped = "data" .. string.sub(stripped, 6)
+    end
+    if getAppBasePath ~= nil then
+        local ok, base = pcall(getAppBasePath)
+        if ok and base ~= nil and tostring(base) ~= "" then
+            local candidate = tostring(base) .. stripped
+            if self:fileLooksPresent(candidate) or copyFile ~= nil then
+                return candidate
+            end
+        end
+    end
+    -- Last resort: return original so copyFile can still try engine resolution.
+    return path
+end
+
 function AgriVisionConnector:vehicleStoreImage(vehicle, filename)
+    local candidates = {}
     if vehicle ~= nil and vehicle.getImageFilename ~= nil then
         local ok, image = pcall(function()
             return vehicle:getImageFilename()
         end)
         if ok and image ~= nil and tostring(image) ~= "" then
-            return tostring(image)
+            table.insert(candidates, tostring(image))
+        end
+    end
+    if vehicle ~= nil and vehicle.storeItem ~= nil and vehicle.storeItem.imageFilename ~= nil then
+        local image = tostring(vehicle.storeItem.imageFilename)
+        if image ~= "" then
+            table.insert(candidates, image)
         end
     end
     if g_storeManager ~= nil and g_storeManager.getItemByXMLFilename ~= nil and filename ~= nil and filename ~= "" then
@@ -351,10 +401,42 @@ function AgriVisionConnector:vehicleStoreImage(vehicle, filename)
             return g_storeManager:getItemByXMLFilename(filename)
         end)
         if ok and item ~= nil and item.imageFilename ~= nil and tostring(item.imageFilename) ~= "" then
-            return tostring(item.imageFilename)
+            table.insert(candidates, tostring(item.imageFilename))
+        end
+    end
+    for _, raw in ipairs(candidates) do
+        local resolved = self:resolveStoreImagePath(raw)
+        if resolved ~= nil then
+            return resolved
         end
     end
     return nil
+end
+
+function AgriVisionConnector:missionVehicles()
+    if g_currentMission == nil then
+        return nil
+    end
+    if g_currentMission.vehicleSystem ~= nil and g_currentMission.vehicleSystem.vehicles ~= nil then
+        return g_currentMission.vehicleSystem.vehicles
+    end
+    if g_currentMission.vehicles ~= nil then
+        return g_currentMission.vehicles
+    end
+    return nil
+end
+
+function AgriVisionConnector:missionHasVehicles()
+    local vehiclesTable = self:missionVehicles()
+    if vehiclesTable == nil then
+        return false
+    end
+    for _, vehicle in pairs(vehiclesTable) do
+        if vehicle ~= nil then
+            return true
+        end
+    end
+    return false
 end
 
 function AgriVisionConnector:fileLooksPresent(path)
@@ -516,9 +598,11 @@ function AgriVisionConnector:update(dt)
     local ok, err = pcall(function()
         self:writeHello()
         self:processCommands()
-        if now - self.lastFullVehiclesAt >= self.FULL_VEHICLE_EVERY_MS then
+        -- First successful scan as soon as vehicles exist; then every FULL_VEHICLE_EVERY_MS.
+        local due = (not self.vehiclesPrimed) or (now - self.lastFullVehiclesAt >= self.FULL_VEHICLE_EVERY_MS)
+        if due and self:missionHasVehicles() then
             self:writeVehiclesFull()
-            self:writeIconsManifestStartup()
+            self.vehiclesPrimed = true
         end
     end)
     if not ok then
@@ -526,19 +610,11 @@ function AgriVisionConnector:update(dt)
     end
 end
 
--- Bootstrap
-local function bootstrap()
-    local mod = AgriVisionConnector
-    mod:init()
-    if mod.active and Mission00 ~= nil then
-        -- Prefer mission update hook when present
-    end
-end
-
-bootstrap()
-
+-- Bootstrap: register listener first; init only creates dirs + hello (no vehicle scan yet).
 addModEventListener({
     update = function(_, dt)
         AgriVisionConnector:update(dt)
     end,
 })
+
+AgriVisionConnector:init()
