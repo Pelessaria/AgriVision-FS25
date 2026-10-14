@@ -1,6 +1,12 @@
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { LoaderCircle } from "lucide-react"
+import {
+  apiConnectorPackageMeta,
+  apiDeployConnector,
+  downloadConnectorPackage,
+  type ConnectorPackageMeta,
+} from "../api"
 import { FieldTip, MissingWorkspace, Modal, PermissionBlock } from "../components/ui"
 import { useStore } from "../store"
 import type { HostProtocol } from "../types"
@@ -50,6 +56,31 @@ export function WorkspaceSettingsPage() {
   const [testing, setTesting] = useState(false)
   const [dialog, setDialog] = useState<"download" | "disable" | "confirm" | "code" | null>(null)
   const [code, setCode] = useState("")
+  const [packageMeta, setPackageMeta] = useState<ConnectorPackageMeta | null>(null)
+  const [deployBusy, setDeployBusy] = useState(false)
+  const [downloadBusy, setDownloadBusy] = useState(false)
+
+  useEffect(() => {
+    if (dialog !== "download") return
+    let cancelled = false
+    void apiConnectorPackageMeta()
+      .then((meta) => {
+        if (!cancelled) setPackageMeta(meta)
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPackageMeta({
+            available: false,
+            error: "meta",
+            version: null,
+            fileName: "FS25_AgriVisionConnector.zip",
+          })
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [dialog])
 
   if (!workspace) return <MissingWorkspace />
   if (!allowed || !manage) return <PermissionBlock />
@@ -550,8 +581,66 @@ export function WorkspaceSettingsPage() {
       {dialog === "download" ? (
         <Modal title={t("wsettings.downloadTitle")} onClose={() => setDialog(null)}>
           <p className="muted">{t("wsettings.downloadBody")}</p>
+          {packageMeta?.available && packageMeta.version ? (
+            <p className="hint">
+              {t("wsettings.connectorPackageVersion", { version: packageMeta.version })}
+            </p>
+          ) : null}
+          {packageMeta && !packageMeta.available ? (
+            <p className="field-error">{packageMeta.error || t("wsettings.connectorPackageMissing")}</p>
+          ) : null}
+          <p className="hint">{t("wsettings.connectorDeployHint")}</p>
           <div className="modal-actions">
-            <button type="button" className="btn btn-primary" onClick={() => setDialog(null)}>{t("close")}</button>
+            <button type="button" className="btn btn-ghost" onClick={() => setDialog(null)}>
+              {t("close")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={!packageMeta?.available || downloadBusy}
+              onClick={() => {
+                setDownloadBusy(true)
+                void downloadConnectorPackage()
+                  .then(() => store.pushToast("ok", t("wsettings.connectorDownload")))
+                  .catch(() => store.pushToast("warn", t("wsettings.connectorPackageMissing")))
+                  .finally(() => setDownloadBusy(false))
+              }}
+            >
+              {downloadBusy ? <LoaderCircle className="icon spin" /> : null}
+              {t("wsettings.connectorDownload")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!packageMeta?.available || deployBusy || !workspace.hostAccess?.configured}
+              title={
+                workspace.hostAccess?.configured ? undefined : t("wsettings.connectorDeployNeedHost")
+              }
+              onClick={() => {
+                if (!workspace.hostAccess?.configured) {
+                  store.pushToast("warn", t("wsettings.connectorDeployNeedHost"))
+                  return
+                }
+                setDeployBusy(true)
+                void apiDeployConnector(workspace.id)
+                  .then((result) => {
+                    if (!result.ok) {
+                      store.pushToast("warn", result.error ?? t("wsettings.connectorDeployFail"))
+                      return
+                    }
+                    store.pushToast(
+                      "ok",
+                      t("wsettings.connectorDeployOk", { path: result.remotePath ?? "mods/" }),
+                    )
+                    setDialog(null)
+                  })
+                  .catch(() => store.pushToast("warn", t("wsettings.connectorDeployFail")))
+                  .finally(() => setDeployBusy(false))
+              }}
+            >
+              {deployBusy ? <LoaderCircle className="icon spin" /> : null}
+              {deployBusy ? t("wsettings.connectorDeploying") : t("wsettings.connectorDeploy")}
+            </button>
           </div>
         </Modal>
       ) : null}

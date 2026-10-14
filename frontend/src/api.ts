@@ -229,6 +229,55 @@ export async function apiDeleteHostAccess(
   })
 }
 
+export type ConnectorPackageMeta = {
+  available: boolean
+  error?: string | null
+  version: string | null
+  fileName: string
+  bytes?: number
+}
+
+export async function apiConnectorPackageMeta(): Promise<ConnectorPackageMeta> {
+  return apiFetch("/api/system/connector/package/meta")
+}
+
+export async function apiDeployConnector(
+  workspaceId: string,
+  modsPath?: string,
+): Promise<{
+  ok: boolean
+  error?: string | null
+  remotePath?: string | null
+  bytes?: number | null
+  version?: string | null
+}> {
+  return apiFetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/connector/deploy`, {
+    method: "POST",
+    body: JSON.stringify(modsPath ? { modsPath } : {}),
+  })
+}
+
+/** Trigger authenticated download of the packaged connector zip. */
+export async function downloadConnectorPackage(): Promise<void> {
+  const response = await fetch("/api/system/connector/package", {
+    method: "GET",
+    credentials: "include",
+    headers: { Accept: "application/zip" },
+  })
+  if (!response.ok) {
+    throw new Error(`Download HTTP ${response.status}`)
+  }
+  const blob = await response.blob()
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement("a")
+  anchor.href = url
+  anchor.download = "FS25_AgriVisionConnector.zip"
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  URL.revokeObjectURL(url)
+}
+
 /** Probe whether the Laravel API is reachable (not just Vite demo). */
 export async function apiIsLive(): Promise<boolean> {
   try {

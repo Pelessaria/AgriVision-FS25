@@ -143,6 +143,62 @@ final class HostFileClient
         }
     }
 
+    public function write(string $path, string $contents): void
+    {
+        try {
+            if ($this->ftp) {
+                $this->ftp->write($path, $contents);
+
+                return;
+            }
+
+            $path = $this->normalizePath($path);
+            $parent = dirname(str_replace('\\', '/', $path));
+            if ($parent !== '.' && $parent !== '') {
+                $this->ensureDirectory($parent);
+            }
+            $this->sftp()->write($path, $contents);
+        } catch (Throwable $e) {
+            throw new RuntimeException(
+                HostConnectionError::format($e, 'Schreiben '.$path.' @ '.$this->endpointLabel()),
+                0,
+                $e
+            );
+        }
+    }
+
+    public function ensureDirectory(string $path): void
+    {
+        $path = $this->normalizePath($path);
+        if ($path === '') {
+            return;
+        }
+
+        try {
+            if ($this->ftp) {
+                $this->ftp->ensureDirectory($path);
+
+                return;
+            }
+
+            $fs = $this->sftp();
+            $parts = explode('/', $path);
+            $built = '';
+            foreach ($parts as $part) {
+                $built = $built === '' ? $part : $built.'/'.$part;
+                if (! $fs->directoryExists($built)) {
+                    $fs->createDirectory($built);
+                }
+            }
+        } catch (Throwable $e) {
+            throw new RuntimeException(
+                HostConnectionError::format($e, 'Ordner '.$path.' @ '.$this->endpointLabel()),
+                0,
+                $e
+            );
+        }
+    }
+
     /**
      * @return array{
      *   savegame: string|null,

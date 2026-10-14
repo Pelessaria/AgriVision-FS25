@@ -20,5 +20,11 @@ try {
   Pop-Location
 }
 
+# Also ship inside the Laravel tree so in-app updates / FTP deploy find the zip.
+$backendPackageDir = Join-Path (Split-Path $root -Parent) "backend\resources\connector"
+New-Item -ItemType Directory -Force -Path $backendPackageDir | Out-Null
+Copy-Item -Force $zip (Join-Path $backendPackageDir "FS25_AgriVisionConnector.zip")
+
 Write-Host "Packed: $zip"
+Write-Host "Copied to backend/resources/connector/ for dashboard deploy"
 Get-Item $zip | Format-List FullName, Length, LastWriteTime

@@ -115,6 +115,63 @@ final class CurlFtpClient
         return $this->exec($url, [], 'READ '.$path);
     }
 
+    public function write(string $path, string $contents): void
+    {
+        $tmp = tmpfile();
+        if ($tmp === false) {
+            throw new RuntimeException('TEMP-Datei für Upload nicht erstellbar.');
+        }
+        fwrite($tmp, $contents);
+        rewind($tmp);
+        $meta = stream_get_meta_data($tmp);
+        $local = $meta['uri'] ?? null;
+        if (! is_string($local) || $local === '') {
+            fclose($tmp);
+            throw new RuntimeException('TEMP-Pfad für Upload fehlt.');
+        }
+
+        try {
+            $url = $this->urlForPath($path, false);
+            $this->exec($url, [
+                CURLOPT_UPLOAD => true,
+                CURLOPT_INFILE => $tmp,
+                CURLOPT_INFILESIZE => strlen($contents),
+                // Create parent folders on the host when missing (mods/, etc.).
+                CURLOPT_FTP_CREATE_MISSING_DIRS => defined('CURLFTP_CREATE_DIR_RETRY')
+                    ? CURLFTP_CREATE_DIR_RETRY
+                    : 2,
+            ], 'WRITE '.$path);
+        } finally {
+            fclose($tmp);
+        }
+    }
+
+    public function ensureDirectory(string $path): void
+    {
+        $path = $this->normalizePath($path);
+        if ($path === '' || $this->directoryExists($path)) {
+            return;
+        }
+
+        // Upload a tiny marker then delete is heavy; prefer CREATE_MISSING_DIRS on write.
+        // Soft-create by listing parent and relying on write() for the zip path.
+        $parent = dirname(str_replace('\\', '/', $path));
+        if ($parent !== '.' && $parent !== '' && $parent !== '/') {
+            $this->ensureDirectory($parent);
+        }
+    }
+
+    public function directoryExists(string $path): bool
+    {
+        try {
+            $this->listNames($path);
+
+            return true;
+        } catch (RuntimeException) {
+            return false;
+        }
+    }
+
     public function modeLabel(): string
     {
         return match ($this->mode) {

@@ -15,10 +15,15 @@ cd connector
 .\pack.ps1
 ```
 
-Erzeugt `dist/FS25_AgriVisionConnector.zip` (Dateien an der ZIP-Wurzel).
+Erzeugt:
+
+- `dist/FS25_AgriVisionConnector.zip` (Dateien an der ZIP-Wurzel)
+- Kopie nach `backend/resources/connector/` (für AgriVision-Update + UI-Deploy)
+
+Im Dashboard (Workspace → Connector → Paket): ZIP herunterladen **oder** per gespeichertem SFTP/FTPS/FTP in den `mods/`-Ordner des Spielservers legen.
 
 1. Vor dem produktiven Deploy: `descVersion` in `modDesc.xml` aus der Spiel-`log.txt` setzen.
-2. ZIP auf den Dedicated Server legen und in der Modliste aktivieren.
+2. ZIP auf den Dedicated Server legen (UI-Deploy oder manuell) und in der Modliste aktivieren.
 3. Probe: [PROBE.md](PROBE.md). Ping-Beispiel: `examples/command-ping.xml` → als `command.xml` nach `modSettings/FS25_AgriVisionConnector/` kopieren.
 
 Im Mehrspieler lädt FS25 keine entpackten Ordner-Mods.

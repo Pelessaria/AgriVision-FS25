@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Workspace;
+use App\Services\Fs25\ConnectorDeployService;
 use App\Services\Fs25\ConnectorSnapshotService;
 use App\Services\Fs25\HostAccessService;
 use App\Services\Fs25\WorkspaceFeedService;
@@ -162,6 +163,51 @@ class WorkspaceController extends Controller
             'farms' => $farms,
             'workspace' => $this->serialize($row->fresh()),
         ]);
+    }
+
+    public function connectorPackage(ConnectorDeployService $deploy): BinaryFileResponse|JsonResponse
+    {
+        try {
+            $path = $deploy->packagePath();
+        } catch (Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 404);
+        }
+
+        return response()->download($path, ConnectorDeployService::MOD_ZIP, [
+            'Content-Type' => 'application/zip',
+        ]);
+    }
+
+    public function connectorPackageMeta(ConnectorDeployService $deploy): JsonResponse
+    {
+        try {
+            $path = $deploy->packagePath();
+            $bytes = filesize($path) ?: 0;
+        } catch (Throwable $e) {
+            return response()->json([
+                'available' => false,
+                'error' => $e->getMessage(),
+                'version' => null,
+                'fileName' => ConnectorDeployService::MOD_ZIP,
+            ]);
+        }
+
+        return response()->json([
+            'available' => true,
+            'error' => null,
+            'version' => $deploy->packageVersion(),
+            'fileName' => ConnectorDeployService::MOD_ZIP,
+            'bytes' => $bytes,
+        ]);
+    }
+
+    public function deployConnector(Request $request, string $workspace, ConnectorDeployService $deploy): JsonResponse
+    {
+        $row = $this->findWorkspace($workspace);
+        $modsPath = $request->string('modsPath')->toString() ?: null;
+        $result = $deploy->deploy($row, $modsPath);
+
+        return response()->json($result, $result['ok'] ? 200 : 422);
     }
 
     public function connectorIcon(string $workspace, string $modKey, ConnectorSnapshotService $connector): BinaryFileResponse|Response
