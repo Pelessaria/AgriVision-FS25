@@ -18,10 +18,21 @@ class SystemUpdateController extends Controller
         try {
             return response()->json($updates->status());
         } catch (Throwable $e) {
+            // Soft-fail: keep HTTP 200 so the SPA does not treat this as "no backend".
             return response()->json([
                 'enabled' => (bool) config('agrivision.updates.enabled'),
+                'installedVersion' => (string) config('agrivision.version'),
+                'installedSha' => null,
+                'installedAt' => null,
+                'repo' => config('agrivision.github.owner').'/'.config('agrivision.github.repo'),
+                'branch' => (string) config('agrivision.github.branch'),
+                'remoteSha' => null,
+                'remoteMessage' => null,
+                'remoteHtmlUrl' => null,
+                'updateAvailable' => false,
+                'checkedAt' => gmdate('c'),
                 'error' => $e->getMessage(),
-            ], 502);
+            ]);
         }
     }
 

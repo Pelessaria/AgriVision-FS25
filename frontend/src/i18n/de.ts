@@ -341,6 +341,7 @@ export const de = {
     updateCurrentOk: "Installation ist aktuell",
     updateApplied: "Update angewendet. Seite neu laden.",
     updateApplyDemo: "Im Prototyp ohne Backend wird der Stand nur geprüft. Die Installation läuft über die PHP-API auf dem Webspace.",
+    updateApiFallback: "Status-API nicht erreichbar — Anzeige über GitHub. Installation läuft trotzdem über den Server.",
     updateApplyDisabledCurrent: "Kein Update nötig — Installation ist bereits auf dem neuesten Stand.",
     updateBackendMissing: "Backend nicht erreichbar — Update-Prüfung über GitHub. Installation erst auf dem Webspace.",
     updateFailed: "Update fehlgeschlagen: {{error}}",

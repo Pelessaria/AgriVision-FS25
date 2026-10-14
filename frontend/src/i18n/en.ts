@@ -343,6 +343,7 @@ export const en = {
     updateCurrentOk: "Installation is up to date",
     updateApplied: "Update applied. Reload the page.",
     updateApplyDemo: "Without a backend this prototype only checks status. Installation runs via the PHP API on the web host.",
+    updateApiFallback: "Status API unreachable — showing GitHub. Install still runs through the server.",
     updateApplyDisabledCurrent: "No update needed — install is already on the latest commit.",
     updateBackendMissing: "Backend unreachable — checked GitHub only. Install updates on the web host.",
     updateFailed: "Update failed: {{error}}",

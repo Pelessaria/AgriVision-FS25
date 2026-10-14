@@ -58,33 +58,38 @@ async function fetchGithubHead(): Promise<{
 
 /**
  * Prefer Laravel `/api/system/update` when the backend is reachable.
- * Fall back to the public GitHub API so the settings UI works in the Vite prototype.
+ * Fall back to the public GitHub API for display; install still goes through PHP when live.
  */
 export async function checkForUpdates(installedVersion: string, installedSha: string | null): Promise<UpdateStatus> {
   const checkedAt = new Date().toISOString()
+  let apiError: string | undefined
 
   try {
     const json = await apiFetch<Omit<UpdateStatus, "source">>("/api/system/update")
     return { ...json, source: "api" }
   } catch (error) {
-    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
-      return {
-        enabled: false,
-        installedVersion,
-        installedSha,
-        installedAt: null,
-        repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
-        branch: GITHUB_BRANCH,
-        remoteSha: null,
-        remoteMessage: null,
-        remoteHtmlUrl: null,
-        updateAvailable: false,
-        checkedAt,
-        source: "api",
-        error: error.message,
+    if (error instanceof ApiError) {
+      if (error.status === 401 || error.status === 403) {
+        return {
+          enabled: false,
+          installedVersion,
+          installedSha,
+          installedAt: null,
+          repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+          branch: GITHUB_BRANCH,
+          remoteSha: null,
+          remoteMessage: null,
+          remoteHtmlUrl: null,
+          updateAvailable: false,
+          checkedAt,
+          source: "api",
+          error: error.message,
+        }
       }
+      apiError = `HTTP ${error.status}: ${error.message}`
+    } else if (error instanceof Error) {
+      apiError = error.message
     }
-    // Prototype / separate Vite origin — use GitHub directly.
   }
 
   try {
@@ -103,6 +108,7 @@ export async function checkForUpdates(installedVersion: string, installedSha: st
       updateAvailable,
       checkedAt,
       source: "github",
+      error: apiError,
     }
   } catch (error) {
     return {
@@ -118,7 +124,7 @@ export async function checkForUpdates(installedVersion: string, installedSha: st
       updateAvailable: false,
       checkedAt,
       source: "demo",
-      error: error instanceof Error ? error.message : "Update check failed",
+      error: apiError ?? (error instanceof Error ? error.message : "Update check failed"),
     }
   }
 }

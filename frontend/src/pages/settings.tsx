@@ -35,6 +35,7 @@ export function SettingsPage() {
   const { t, i18n: current } = useTranslation()
   const store = useStore()
   const actor = store.actor
+  const liveMode = store.liveMode
   const isAdmin = actor?.globalRole === "admin" && actor.active
   const fileRef = useRef<HTMLInputElement>(null)
   const [tab, setTab] = useState<SettingsTab>("profile")
@@ -522,8 +523,14 @@ export function SettingsPage() {
             </p>
           ) : null}
 
-          {updateStatus?.source !== "api" ? (
+          {updateStatus?.source !== "api" && !liveMode ? (
             <p className="hint">{t("settings.updateApplyDemo")}</p>
+          ) : null}
+          {updateStatus && updateStatus.source !== "api" && liveMode ? (
+            <p className="hint">
+              {t("settings.updateApiFallback")}
+              {updateStatus.error ? ` (${updateStatus.error})` : null}
+            </p>
           ) : null}
 
           <div className="setting-actions">
@@ -542,10 +549,11 @@ export function SettingsPage() {
                 updateChecking ||
                 updateApplying ||
                 !updateStatus?.updateAvailable ||
-                updateStatus.source !== "api"
+                !updateStatus.remoteSha ||
+                (updateStatus.source !== "api" && !liveMode)
               }
               title={
-                updateStatus?.source !== "api"
+                updateStatus?.source !== "api" && !liveMode
                   ? t("settings.updateApplyDemo")
                   : updateStatus && !updateStatus.updateAvailable
                     ? t("settings.updateApplyDisabledCurrent")
