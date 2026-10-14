@@ -157,12 +157,14 @@ class WorkspaceController extends Controller
     public function syncConnectorIcons(string $workspace, ConnectorSnapshotService $connector): JsonResponse
     {
         $row = $this->findWorkspace($workspace);
-        $result = $connector->syncStoreIconsIfDue($row);
+        $result = $connector->syncStoreIconsIfDue($row, 0);
 
         $progress = ($result['downloaded'] ?? 0) > 0 || ($result['converted'] ?? 0) > 0;
+        $clean = $result['skipped'] === null
+            || in_array($result['skipped'], ['unchanged', 'convert_cooldown'], true);
 
         return response()->json([
-            'ok' => $result['skipped'] === null || $progress,
+            'ok' => $clean || $progress,
             'iconSync' => $result,
         ]);
     }

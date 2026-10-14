@@ -42,26 +42,21 @@ Artisan::command('agrivision:sync-store-icons {--daemon : Keep pulling icons unt
     };
 
     if (! $this->option('daemon')) {
-        $deadline = time() + 50;
-        do {
-            $pass = $run(0);
-        } while ($pass['pending'] > 0 && $pass['moved'] > 0 && time() < $deadline);
+        $run(ConnectorSnapshotService::ICON_SYNC_INTERVAL_SEC);
 
         return;
     }
 
     while (true) {
-        $pending = 0;
         try {
-            $pass = $run(8);
-            $pending = $pass['pending'];
+            $run(ConnectorSnapshotService::ICON_SYNC_INTERVAL_SEC);
         } catch (Throwable $e) {
             $this->error($e->getMessage());
         }
-        sleep($pending > 0 ? 5 : 40);
+        sleep(ConnectorSnapshotService::ICON_SYNC_INTERVAL_SEC);
     }
 })->purpose('Pull missing vehicle store icons over FTP');
 
 Schedule::command('agrivision:sync-store-icons')
-    ->everyMinute()
-    ->withoutOverlapping(10);
+    ->everyFiveMinutes()
+    ->withoutOverlapping(20);

@@ -1005,7 +1005,7 @@ h1, h2, h3, p { margin: 0; }
 .hbar-track.empty {
   background: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.03) 0 6px, rgba(255, 255, 255, 0.07) 6px 12px);
 }
-.toolbar { display: flex; flex-wrap: wrap; gap: 8px; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .toolbar .btn { white-space: normal; text-align: center; }
 
 .filters {

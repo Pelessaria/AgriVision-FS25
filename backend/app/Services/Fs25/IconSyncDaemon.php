@@ -7,11 +7,10 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Store-icon FTP must keep going after the browser leaves the page.
- * php-fpm stops work when the request ends, and this install often has no cron,
- * so the worker finishes the HTTP response and then keeps pulling icons.
- * A www-data crontab is installed when the host allows it, so the pull also
- * continues when nobody has the dashboard open.
+ * Automatic store-icon check every five minutes.
+ * A www-data crontab runs the artisan command when the host allows it.
+ * Without cron, the next dashboard request after five minutes finishes the
+ * HTTP response and then runs one check (manifest, then any changed files).
  */
 final class IconSyncDaemon
 {
@@ -40,56 +39,32 @@ final class IconSyncDaemon
 
     private static function drainAfterResponse(): void
     {
-        $canDetach = function_exists('fastcgi_finish_request');
-        if (! $canDetach) {
-            self::drain(20);
-
+        $checked = storage_path('app/connector/icon-sync.checked');
+        if (is_file($checked) && (time() - (int) filemtime($checked)) < ConnectorSnapshotService::ICON_SYNC_INTERVAL_SEC) {
             return;
         }
 
-        @fastcgi_finish_request();
+        $canDetach = function_exists('fastcgi_finish_request');
+        if ($canDetach) {
+            @fastcgi_finish_request();
+        }
         if (function_exists('ignore_user_abort')) {
             @ignore_user_abort(true);
         }
         if (function_exists('set_time_limit')) {
             @set_time_limit(0);
         }
-        self::drain(180);
-    }
 
-    private static function drain(int $budgetSec): void
-    {
-        $idle = storage_path('app/connector/icon-sync.idle');
-        if (is_file($idle) && (time() - (int) filemtime($idle)) < 120) {
-            return;
-        }
-
-        $deadline = time() + $budgetSec;
         try {
             $icons = app(ConnectorSnapshotService::class);
-            while (time() < $deadline) {
-                $pending = 0;
-                $moved = 0;
-                foreach (Workspace::query()->cursor() as $workspace) {
-                    $result = $icons->syncStoreIconsIfDue($workspace, 0);
-                    $pending += (int) ($result['pending'] ?? 0);
-                    $moved += (int) ($result['downloaded'] ?? 0) + (int) ($result['converted'] ?? 0);
-                    if (($result['skipped'] ?? null) === 'busy') {
-                        return;
-                    }
-                }
-                if ($pending <= 0) {
-                    File::ensureDirectoryExists(dirname($idle));
-                    File::put($idle, (string) time());
-
-                    return;
-                }
-                if ($moved <= 0) {
+            foreach (Workspace::query()->cursor() as $workspace) {
+                $result = $icons->syncStoreIconsIfDue($workspace);
+                if (($result['skipped'] ?? null) === 'busy') {
                     return;
                 }
             }
         } catch (\Throwable $e) {
-            Log::warning('AgriVision icon drain stopped', ['error' => $e->getMessage()]);
+            Log::warning('AgriVision icon sync stopped', ['error' => $e->getMessage()]);
         }
     }
 
@@ -97,7 +72,8 @@ final class IconSyncDaemon
     {
         $ok = storage_path('app/connector/icon-sync.cron');
         $fail = storage_path('app/connector/icon-sync.cron-failed');
-        if (is_file($ok)) {
+        $line = self::cronLine();
+        if (is_file($ok) && trim((string) file_get_contents($ok)) === $line) {
             return;
         }
         if (is_file($fail) && (time() - (int) filemtime($fail)) < 3600) {
@@ -112,28 +88,24 @@ final class IconSyncDaemon
             return;
         }
 
-        $php = self::phpCli();
-        $artisan = base_path('artisan');
-        $log = storage_path('logs/icon-sync.log');
-        $line = '* * * * * '.escapeshellarg($php).' '.escapeshellarg($artisan)
-            .' agrivision:sync-store-icons >> '.escapeshellarg($log).' 2>&1';
-
         try {
             $existing = shell_exec('crontab -l 2>/dev/null');
             $existing = is_string($existing) ? $existing : '';
-            if (str_contains($existing, 'agrivision:sync-store-icons')) {
-                File::ensureDirectoryExists(dirname($ok));
-                File::put($ok, $line);
-
-                return;
+            $kept = [];
+            foreach (preg_split('/\R/', $existing) ?: [] as $existingLine) {
+                if (trim($existingLine) === '' || str_contains($existingLine, 'agrivision:sync-store-icons')) {
+                    continue;
+                }
+                $kept[] = $existingLine;
             }
-            $body = rtrim($existing)."\n".$line."\n";
+            $body = rtrim(implode("\n", $kept))."\n".$line."\n";
             $tmp = storage_path('app/connector/crontab.txt');
             File::ensureDirectoryExists(dirname($tmp));
             File::put($tmp, $body);
             shell_exec('crontab '.escapeshellarg($tmp).' 2>&1');
             $check = shell_exec('crontab -l 2>/dev/null');
-            if (is_string($check) && str_contains($check, 'agrivision:sync-store-icons')) {
+            if (is_string($check) && str_contains($check, '*/5') && str_contains($check, 'agrivision:sync-store-icons')) {
+                File::ensureDirectoryExists(dirname($ok));
                 File::put($ok, $line);
                 if (is_file($fail)) {
                     File::delete($fail);
@@ -148,6 +120,16 @@ final class IconSyncDaemon
             File::put($fail, $e->getMessage());
             Log::warning('AgriVision icon cron failed', ['error' => $e->getMessage()]);
         }
+    }
+
+    private static function cronLine(): string
+    {
+        $php = self::phpCli();
+        $artisan = base_path('artisan');
+        $log = storage_path('logs/icon-sync.log');
+
+        return '*/5 * * * * '.escapeshellarg($php).' '.escapeshellarg($artisan)
+            .' agrivision:sync-store-icons >> '.escapeshellarg($log).' 2>&1';
     }
 
     private static function phpCli(): string

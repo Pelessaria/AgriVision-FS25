@@ -12,21 +12,19 @@ use Throwable;
  * Pull AgriVision connector files from host modSettings.
  *
  * Vehicles: cheap XML pull for inventory enrichment.
- * Store icons: read icons_manifest.xml, then RETR each missing file directly.
- * Never gate downloads on FTP LIST — many FTPS hosts return empty NLST.
+ * Store icons: read icons_manifest.xml, then RETR every missing or changed file
+ * in one pass. A later sync only fetches the manifest and stops when the store
+ * rows are unchanged. Never gate downloads on FTP LIST.
  */
 final class ConnectorSnapshotService
 {
     public const MOD_FOLDER = 'FS25_AgriVisionConnector';
 
-    /** Minimum seconds between icon FTP syncs per workspace. */
-    public const ICON_SYNC_INTERVAL_SEC = 3;
-
-    /** Max missing icons to fetch/convert per sync pass. */
-    public const ICON_SYNC_BATCH = 8;
+    /** Seconds between automatic icon checks. A manual sync passes 0. */
+    public const ICON_SYNC_INTERVAL_SEC = 300;
 
     /** Seconds to wait before retrying a DDS that did not become a PNG. */
-    private const CONVERT_COOLDOWN_SEC = 120;
+    private const CONVERT_COOLDOWN_SEC = 300;
 
     /** @var resource|null */
     private static $iconLock = null;
@@ -108,11 +106,14 @@ final class ConnectorSnapshotService
 
         $result = $this->syncStoreIcons($workspace);
 
-        // Only throttle after a real attempt (success or hard failure).
+        // Throttle after a real check, including "manifest unchanged" (one XML, no DDS).
         if ($result['skipped'] === null
-            || in_array($result['skipped'], ['connect_failed', 'no_icons', 'manifest_failed'], true)) {
+            || in_array($result['skipped'], ['unchanged', 'connect_failed', 'no_icons', 'manifest_failed', 'convert_cooldown'], true)) {
             File::ensureDirectoryExists(dirname($marker));
             File::put($marker, (string) time());
+            $checked = storage_path('app/connector/icon-sync.checked');
+            File::ensureDirectoryExists(dirname($checked));
+            File::put($checked, (string) time());
         }
 
         return $result;
@@ -124,7 +125,7 @@ final class ConnectorSnapshotService
     public function syncStoreIcons(Workspace $workspace): array
     {
         if (function_exists('set_time_limit')) {
-            @set_time_limit(240);
+            @set_time_limit(600);
         }
         if (function_exists('ignore_user_abort')) {
             @ignore_user_abort(true);
@@ -255,38 +256,46 @@ final class ConnectorSnapshotService
         File::ensureDirectoryExists($dir);
 
         $cooldown = $this->readConvertCooldown($dir);
+        $catalog = $this->readIconCatalog($dir);
+        $known = $catalog !== [];
         $now = time();
         $work = [];
         $cooling = 0;
         foreach ($jobs as $job) {
             $safeKey = preg_replace('/[^a-zA-Z0-9._-]+/', '_', $job['key']) ?? 'icon';
-            if ($cache->localPath($workspace, $safeKey) !== null) {
+            $remote = $this->normalizeIconRemote($job['remote']);
+            if ($remote === null) {
                 continue;
             }
-            if (($cooldown[$safeKey] ?? 0) > $now) {
+            $hasPng = $cache->localPath($workspace, $safeKey) !== null;
+            $remoteChanged = $known && ($catalog[$safeKey] ?? null) !== $remote;
+            if ($hasPng && ! $remoteChanged) {
+                continue;
+            }
+            if (! $remoteChanged && ($cooldown[$safeKey] ?? 0) > $now) {
                 $cooling++;
-                continue;
-            }
-            $baseName = basename(str_replace('\\', '/', $job['remote']));
-            $remote = rtrim(dirname(str_replace('\\', '/', $job['remote'])), '/');
-            if ($baseName === '' || $baseName === '.' || $baseName === '..') {
                 continue;
             }
             $work[] = [
                 'key' => $safeKey,
                 'ext' => $job['ext'],
-                'remote' => ($remote !== '' && $remote !== '.' ? $remote : 'icons/store').'/'.$baseName,
+                'remote' => $remote,
                 'pngLocal' => $dir.'/'.$safeKey.'.png',
+                'force' => $remoteChanged,
             ];
         }
 
         $listed = count($jobs);
         if ($work === []) {
+            if ($cooling === 0) {
+                $this->writeIconCatalog($dir, $jobs);
+            }
+
             return $this->syncResult(
                 pending: $cooling,
                 listed: $listed,
-                skipped: $cooling > 0 ? 'convert_cooldown' : null,
-                detail: $cooling > 0 ? 'DDS liegt lokal, Konvertierung pausiert' : 'alle Icons bereits als PNG vorhanden'
+                skipped: $cooling > 0 ? 'convert_cooldown' : 'unchanged',
+                detail: $cooling > 0 ? 'DDS liegt lokal, Konvertierung pausiert' : 'Manifest unverändert'
             );
         }
 
@@ -294,22 +303,20 @@ final class ConnectorSnapshotService
         $converted = 0;
         $errors = 0;
         $firstError = null;
-        $batch = array_slice($work, 0, self::ICON_SYNC_BATCH);
 
-        Log::info('AgriVision icon sync starting RETR batch', [
+        Log::info('AgriVision icon sync starting RETR', [
             'workspace' => $workspace->public_id,
             'listed' => $listed,
             'missing' => count($work),
-            'batch' => count($batch),
-            'firstRemote' => $batch[0]['remote'] ?? null,
+            'firstRemote' => $work[0]['remote'] ?? null,
         ]);
 
-        foreach ($batch as $job) {
+        foreach ($work as $job) {
             try {
                 $ddsLocal = $dir.'/'.$job['key'].'.dds';
                 $bytes = null;
                 $fetched = false;
-                if ($job['ext'] === 'dds' && is_file($ddsLocal) && filesize($ddsLocal) > 128) {
+                if (! $job['force'] && $job['ext'] === 'dds' && is_file($ddsLocal) && filesize($ddsLocal) > 128) {
                     $cached = file_get_contents($ddsLocal);
                     if (is_string($cached) && strlen($cached) > 128) {
                         $bytes = $cached;
@@ -370,6 +377,9 @@ final class ConnectorSnapshotService
         }
 
         $this->writeConvertCooldown($dir, $cooldown);
+        if ($stillPending === 0) {
+            $this->writeIconCatalog($dir, $jobs);
+        }
 
         Log::info('AgriVision icon sync pass', [
             'workspace' => $workspace->public_id,
@@ -493,6 +503,62 @@ final class ConnectorSnapshotService
             return;
         }
         File::put($path, json_encode($keep));
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function readIconCatalog(string $dir): array
+    {
+        $path = $dir.'/.icon-catalog.json';
+        if (! is_file($path)) {
+            return [];
+        }
+        $decoded = json_decode((string) file_get_contents($path), true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+        $out = [];
+        foreach ($decoded as $key => $remote) {
+            if (is_string($key) && is_string($remote) && $key !== '' && $remote !== '') {
+                $out[$key] = $remote;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * Store key + remote path. Manifest timestamps are ignored, so a rewrite
+     * with the same icons does not look like a change.
+     *
+     * @param  list<array{key: string, ext: string, remote: string}>  $jobs
+     */
+    private function writeIconCatalog(string $dir, array $jobs): void
+    {
+        $catalog = [];
+        foreach ($jobs as $job) {
+            $safeKey = preg_replace('/[^a-zA-Z0-9._-]+/', '_', $job['key']) ?? 'icon';
+            $remote = $this->normalizeIconRemote($job['remote']);
+            if ($remote === null) {
+                continue;
+            }
+            $catalog[$safeKey] = $remote;
+        }
+        ksort($catalog);
+        File::put($dir.'/.icon-catalog.json', json_encode($catalog));
+    }
+
+    private function normalizeIconRemote(string $remote): ?string
+    {
+        $path = str_replace('\\', '/', $remote);
+        $baseName = basename($path);
+        $remoteDir = rtrim(dirname($path), '/');
+        if ($baseName === '' || $baseName === '.' || $baseName === '..') {
+            return null;
+        }
+
+        return ($remoteDir !== '' && $remoteDir !== '.' ? $remoteDir : 'icons/store').'/'.$baseName;
     }
 
     private function hostAccess(Workspace $workspace): ?HostAccess
