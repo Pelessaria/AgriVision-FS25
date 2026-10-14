@@ -36,7 +36,8 @@ final class ModIconCacheService
     {
         $safe = $this->safeKey($key);
         $dir = $this->cacheDir($workspace);
-        foreach (['png', 'jpg', 'jpeg', 'webp'] as $ext) {
+        // Prefer raster formats the browser can show; DDS is served via on-demand PNG convert.
+        foreach (['png', 'jpg', 'jpeg', 'webp', 'dds'] as $ext) {
             $path = $dir.'/'.$safe.'.'.$ext;
             if (is_file($path) && filesize($path) > 32) {
                 return $path;

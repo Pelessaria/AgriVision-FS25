@@ -190,7 +190,7 @@ final class WorkspaceFeedService
                 // Host connector files are optional enrichment.
             }
 
-            // Throttled store-icon pull (skip existing; at most every 15 min).
+            // Frequent incremental store-icon pull (missing only; skips cached).
             try {
                 $connectorService->syncStoreIconsIfDue($workspace);
             } catch (Throwable) {
@@ -212,8 +212,12 @@ final class WorkspaceFeedService
                 $modKey = $vehicle['modKey'] ?? ModKey::fromFilename(is_string($filename) ? $filename : null);
                 // Only expose icon URLs that already exist locally — never trigger FTP from <img>.
                 $iconUrl = null;
-                if (is_string($storeKey) && $storeKey !== '' && $iconCache->localPath($workspace, $storeKey) !== null) {
-                    $iconUrl = $iconCache->publicUrl($workspace, $storeKey);
+                if (is_string($storeKey) && $storeKey !== '') {
+                    $localIcon = $iconCache->localPath($workspace, $storeKey)
+                        ?? $connectorService->cachedIconPath($workspace, $storeKey);
+                    if ($localIcon !== null) {
+                        $iconUrl = $iconCache->publicUrl($workspace, $storeKey);
+                    }
                 }
                 $vehicles[] = [
                     'id' => $unique

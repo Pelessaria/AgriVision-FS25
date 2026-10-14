@@ -11,17 +11,17 @@ use Throwable;
  * Pull AgriVision connector files from host modSettings.
  *
  * Vehicles: cheap XML pull for inventory enrichment.
- * Store icons: throttled / skip-if-cached — never on every page image request.
+ * Store icons: frequent incremental sync (missing only) — never on every <img> request.
  */
 final class ConnectorSnapshotService
 {
     public const MOD_FOLDER = 'FS25_AgriVisionConnector';
 
     /** Minimum seconds between icon FTP syncs per workspace. */
-    public const ICON_SYNC_INTERVAL_SEC = 900;
+    public const ICON_SYNC_INTERVAL_SEC = 60;
 
-    /** Max new icon files to fetch per sync pass. */
-    public const ICON_SYNC_BATCH = 40;
+    /** Max missing icons to fetch (or convert) per sync pass. */
+    public const ICON_SYNC_BATCH = 80;
 
     /**
      * @return array{
@@ -172,8 +172,8 @@ final class ConnectorSnapshotService
         $dir = storage_path('app/connector/'.$workspace->public_id.'/icons');
         File::ensureDirectoryExists($dir);
 
-        $downloaded = 0;
-        foreach (array_slice($icons, 0, self::ICON_SYNC_BATCH) as $icon) {
+        $work = [];
+        foreach ($icons as $icon) {
             // Vehicle overview uses store icons; skip legacy mod-pack rows.
             if (($icon['kind'] ?? 'store') === 'mod') {
                 continue;
@@ -182,32 +182,53 @@ final class ConnectorSnapshotService
             if ($rel === '' || str_contains($rel, '..')) {
                 continue;
             }
-            $remote = str_starts_with($rel, 'icons/')
-                ? $base.'/'.$rel
-                : $base.'/icons/'.basename($rel);
             $safeKey = preg_replace('/[^a-zA-Z0-9._-]+/', '_', $icon['key']) ?? 'icon';
             $ext = strtolower(pathinfo($rel, PATHINFO_EXTENSION) ?: 'png');
             $local = $dir.'/'.$safeKey.'.'.$ext;
             $pngLocal = $dir.'/'.$safeKey.'.png';
-            if ((is_file($local) && filesize($local) > 32) || (is_file($pngLocal) && filesize($pngLocal) > 32)) {
+            $hasPng = is_file($pngLocal) && filesize($pngLocal) > 32;
+            $hasLocal = is_file($local) && filesize($local) > 32;
+            if ($hasPng) {
                 continue;
             }
+            // Prefer browser-ready PNG; keep DDS for on-demand convert if GD fails.
+            if ($hasLocal && $ext !== 'dds') {
+                continue;
+            }
+            $work[] = [
+                'remote' => str_starts_with($rel, 'icons/')
+                    ? $base.'/'.$rel
+                    : $base.'/icons/'.basename($rel),
+                'ext' => $ext,
+                'local' => $local,
+                'pngLocal' => $pngLocal,
+                'hasLocal' => $hasLocal,
+            ];
+        }
+
+        $downloaded = 0;
+        foreach (array_slice($work, 0, self::ICON_SYNC_BATCH) as $job) {
             try {
-                if (! $client->fileExists($remote)) {
-                    continue;
+                $bytes = null;
+                if ($job['hasLocal']) {
+                    $bytes = (string) file_get_contents($job['local']);
+                } else {
+                    if (! $client->fileExists($job['remote'])) {
+                        continue;
+                    }
+                    $bytes = $client->read($job['remote']);
+                    if ($bytes === '') {
+                        continue;
+                    }
+                    File::put($job['local'], $bytes);
+                    $downloaded++;
                 }
-                $bytes = $client->read($remote);
-                if ($bytes === '') {
-                    continue;
-                }
-                File::put($local, $bytes);
-                if ($ext === 'dds') {
+                if ($job['ext'] === 'dds' && $bytes !== null && $bytes !== '') {
                     $png = DdsToPng::convert($bytes);
                     if ($png !== null) {
-                        File::put($pngLocal, $png);
+                        File::put($job['pngLocal'], $png);
                     }
                 }
-                $downloaded++;
             } catch (Throwable) {
                 continue;
             }
