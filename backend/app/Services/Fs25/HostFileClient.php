@@ -126,6 +126,35 @@ final class HostFileClient
         }
     }
 
+    /**
+     * @return list<string> basenames in a directory
+     */
+    public function listNames(string $path = ''): array
+    {
+        try {
+            if ($this->ftp) {
+                return $this->ftp->listNames($path);
+            }
+
+            $path = $this->normalizePath($path);
+            $listing = $this->sftp()->listContents($path === '' ? '' : $path, false);
+            $names = [];
+            /** @var StorageAttributes $item */
+            foreach ($listing as $item) {
+                $names[] = basename(str_replace('\\', '/', $item->path()));
+            }
+            sort($names);
+
+            return array_values(array_unique($names));
+        } catch (Throwable $e) {
+            throw new RuntimeException(
+                HostConnectionError::format($e, 'Listing '.$path.' @ '.$this->endpointLabel()),
+                0,
+                $e
+            );
+        }
+    }
+
     public function read(string $path): string
     {
         try {

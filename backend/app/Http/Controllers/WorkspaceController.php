@@ -150,6 +150,7 @@ class WorkspaceController extends Controller
             'fetchedAt' => $result['fetchedAt'],
             'vehicles' => $result['vehicles'],
             'farms' => $result['farms'],
+            'iconSync' => $result['iconSync'] ?? null,
             'workspace' => $this->serialize($row->fresh()),
         ]);
     }

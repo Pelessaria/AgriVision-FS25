@@ -5,6 +5,7 @@ namespace App\Services\Fs25;
 use App\Models\HostAccess;
 use App\Models\Workspace;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
@@ -18,10 +19,10 @@ final class ConnectorSnapshotService
     public const MOD_FOLDER = 'FS25_AgriVisionConnector';
 
     /** Minimum seconds between icon FTP syncs per workspace. */
-    public const ICON_SYNC_INTERVAL_SEC = 60;
+    public const ICON_SYNC_INTERVAL_SEC = 30;
 
     /** Max missing icons to fetch (or convert) per sync pass. */
-    public const ICON_SYNC_BATCH = 80;
+    public const ICON_SYNC_BATCH = 25;
 
     /**
      * @return array{
@@ -84,56 +85,71 @@ final class ConnectorSnapshotService
 
     /**
      * Pull missing store icons when due. Skips files already in local cache.
-     * Returns number of newly downloaded files.
+     *
+     * @return array{downloaded: int, skipped: string|null, pending: int}
      */
-    public function syncStoreIconsIfDue(Workspace $workspace, ?int $intervalSec = null): int
+    public function syncStoreIconsIfDue(Workspace $workspace, ?int $intervalSec = null): array
     {
         $intervalSec ??= self::ICON_SYNC_INTERVAL_SEC;
         $marker = $this->iconSyncMarkerPath($workspace);
         if (is_file($marker)) {
             $age = time() - (int) filemtime($marker);
             if ($age >= 0 && $age < $intervalSec) {
-                return 0;
+                return ['downloaded' => 0, 'skipped' => 'throttled', 'pending' => 0];
             }
         }
 
-        // Claim the interval even if host is offline — avoid hammering FTP.
-        File::ensureDirectoryExists(dirname($marker));
-        File::put($marker, (string) time());
+        $result = $this->syncStoreIcons($workspace);
 
-        return $this->syncStoreIcons($workspace);
+        // Only claim the interval after a real attempt (or a soft skip that should back off).
+        if ($result['skipped'] === null || in_array($result['skipped'], ['connect_failed', 'no_manifest', 'empty'], true)) {
+            File::ensureDirectoryExists(dirname($marker));
+            File::put($marker, (string) time());
+        }
+
+        return $result;
     }
 
     /**
      * Force a store-icon sync (still skips existing local files).
+     *
+     * @return array{downloaded: int, skipped: string|null, pending: int}
      */
-    public function syncStoreIcons(Workspace $workspace): int
+    public function syncStoreIcons(Workspace $workspace): array
     {
         $access = $this->hostAccess($workspace);
         if ($access === null) {
-            return 0;
+            Log::info('AgriVision icon sync skipped: no_host_access', ['workspace' => $workspace->public_id]);
+
+            return ['downloaded' => 0, 'skipped' => 'no_host_access', 'pending' => 0];
         }
 
         $base = $this->connectorBase($access);
         if ($base === null) {
-            return 0;
+            Log::info('AgriVision icon sync skipped: no_mod_settings', ['workspace' => $workspace->public_id]);
+
+            return ['downloaded' => 0, 'skipped' => 'no_mod_settings', 'pending' => 0];
         }
 
         try {
             $client = new HostFileClient($access);
-        } catch (Throwable) {
-            return 0;
+        } catch (Throwable $e) {
+            Log::warning('AgriVision icon sync connect failed', [
+                'workspace' => $workspace->public_id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return ['downloaded' => 0, 'skipped' => 'connect_failed', 'pending' => 0];
         }
 
-        $manifestPath = $base.'/state/icons_manifest.xml';
-        $icons = [];
-        try {
-            if (! $client->fileExists($manifestPath)) {
-                return 0;
-            }
-            $icons = ConnectorIconsParser::parse($client->read($manifestPath));
-        } catch (Throwable) {
-            return 0;
+        $icons = $this->loadIconManifest($client, $base);
+        if ($icons === []) {
+            Log::info('AgriVision icon sync: no remote icons', [
+                'workspace' => $workspace->public_id,
+                'base' => $base,
+            ]);
+
+            return ['downloaded' => 0, 'skipped' => 'no_manifest', 'pending' => 0];
         }
 
         return $this->cacheIcons($client, $workspace, $base, $icons);
@@ -161,12 +177,58 @@ final class ConnectorSnapshotService
     }
 
     /**
-     * @param  list<array{key: string, name: string|null, author: string|null, version: string|null, iconFile: string, kind?: string}>  $icons
+     * @return list<array{key: string, name: string|null, author: string|null, version: string|null, iconFile: string, kind: string}>
      */
-    private function cacheIcons(HostFileClient $client, Workspace $workspace, string $base, array $icons): int
+    private function loadIconManifest(HostFileClient $client, string $base): array
+    {
+        $manifestPath = $base.'/state/icons_manifest.xml';
+        try {
+            $icons = ConnectorIconsParser::parse($client->read($manifestPath));
+            if ($icons !== []) {
+                return $icons;
+            }
+        } catch (Throwable) {
+            // Fall through to directory listing.
+        }
+
+        // Manifest missing/empty — invent rows from icons/store/*.dds on the host.
+        try {
+            $names = $client->listNames($base.'/icons/store');
+        } catch (Throwable) {
+            return [];
+        }
+
+        $icons = [];
+        foreach ($names as $name) {
+            $lower = strtolower($name);
+            if (! str_ends_with($lower, '.dds') && ! str_ends_with($lower, '.png')) {
+                continue;
+            }
+            $key = pathinfo($name, PATHINFO_FILENAME);
+            if ($key === '') {
+                continue;
+            }
+            $icons[] = [
+                'key' => $key,
+                'name' => null,
+                'author' => null,
+                'version' => null,
+                'iconFile' => 'icons/store/'.$name,
+                'kind' => 'store',
+            ];
+        }
+
+        return $icons;
+    }
+
+    /**
+     * @param  list<array{key: string, name: string|null, author: string|null, version: string|null, iconFile: string, kind?: string}>  $icons
+     * @return array{downloaded: int, skipped: string|null, pending: int}
+     */
+    private function cacheIcons(HostFileClient $client, Workspace $workspace, string $base, array $icons): array
     {
         if ($icons === []) {
-            return 0;
+            return ['downloaded' => 0, 'skipped' => 'empty', 'pending' => 0];
         }
 
         $dir = storage_path('app/connector/'.$workspace->public_id.'/icons');
@@ -206,6 +268,11 @@ final class ConnectorSnapshotService
             ];
         }
 
+        $pending = count($work);
+        if ($pending === 0) {
+            return ['downloaded' => 0, 'skipped' => null, 'pending' => 0];
+        }
+
         $downloaded = 0;
         foreach (array_slice($work, 0, self::ICON_SYNC_BATCH) as $job) {
             try {
@@ -213,11 +280,9 @@ final class ConnectorSnapshotService
                 if ($job['hasLocal']) {
                     $bytes = (string) file_get_contents($job['local']);
                 } else {
-                    if (! $client->fileExists($job['remote'])) {
-                        continue;
-                    }
+                    // Direct read — FTP fileExists() would download twice.
                     $bytes = $client->read($job['remote']);
-                    if ($bytes === '') {
+                    if ($bytes === '' || strlen($bytes) <= 32) {
                         continue;
                     }
                     File::put($job['local'], $bytes);
@@ -229,18 +294,40 @@ final class ConnectorSnapshotService
                         File::put($job['pngLocal'], $png);
                     }
                 }
-            } catch (Throwable) {
+            } catch (Throwable $e) {
+                Log::debug('AgriVision icon fetch failed', [
+                    'workspace' => $workspace->public_id,
+                    'remote' => $job['remote'],
+                    'error' => $e->getMessage(),
+                ]);
                 continue;
             }
         }
 
-        return $downloaded;
+        Log::info('AgriVision icon sync pass', [
+            'workspace' => $workspace->public_id,
+            'downloaded' => $downloaded,
+            'pending' => max(0, $pending - $downloaded),
+            'batch' => self::ICON_SYNC_BATCH,
+        ]);
+
+        return [
+            'downloaded' => $downloaded,
+            'skipped' => null,
+            'pending' => max(0, $pending - $downloaded),
+        ];
     }
 
     private function hostAccess(Workspace $workspace): ?HostAccess
     {
+        // Same bar as ConnectorDeployService: configured credentials are enough.
+        // status=ok is probe-only and must not block icon pulls after a deploy.
         $access = HostAccess::query()->where('workspace_id', $workspace->id)->first();
-        if (! $access || $access->status !== 'ok') {
+        if ($access === null) {
+            return null;
+        }
+        $password = $access->password();
+        if ($password === null || $password === '') {
             return null;
         }
 

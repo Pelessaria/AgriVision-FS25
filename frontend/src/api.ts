@@ -148,6 +148,7 @@ export async function apiWorkspaceVehicles(
   vehicles: Vehicle[]
   farms: Farm[]
   workspace?: Workspace
+  iconSync?: { downloaded: number; skipped: string | null; pending: number } | null
 }> {
   return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/vehicles`)
 }

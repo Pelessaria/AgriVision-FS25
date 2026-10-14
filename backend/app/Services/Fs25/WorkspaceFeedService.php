@@ -141,7 +141,7 @@ final class WorkspaceFeedService
     /**
      * Live vehicles from stats JSON + farm stub discovery from savegame.
      *
-     * @return array{ok: bool, error: string|null, fetchedAt: string|null, vehicles: list<array<string, mixed>>, farms: list<array<string, mixed>>}
+     * @return array{ok: bool, error: string|null, fetchedAt: string|null, vehicles: list<array<string, mixed>>, farms: list<array<string, mixed>>, iconSync?: array{downloaded: int, skipped: string|null, pending: int}}
      */
     public function fetchVehicles(Workspace $workspace): array
     {
@@ -191,10 +191,12 @@ final class WorkspaceFeedService
             }
 
             // Frequent incremental store-icon pull (missing only; skips cached).
+            $iconSync = ['downloaded' => 0, 'skipped' => 'not_run', 'pending' => 0];
             try {
-                $connectorService->syncStoreIconsIfDue($workspace);
-            } catch (Throwable) {
-                // ignore — placeholders until next due sync
+                $iconSync = $connectorService->syncStoreIconsIfDue($workspace);
+            } catch (Throwable $e) {
+                $iconSync = ['downloaded' => 0, 'skipped' => 'error', 'pending' => 0];
+                report($e);
             }
 
             $metaVehicles = ConnectorSnapshotService::mergeMeta($connector['vehicles'], $saveVehicles);
@@ -245,6 +247,7 @@ final class WorkspaceFeedService
                 'fetchedAt' => $snapshot->fetchedAtUtc,
                 'vehicles' => $vehicles,
                 'farms' => $this->serializeFarms($workspace),
+                'iconSync' => $iconSync,
             ];
         } catch (Throwable $e) {
             $workspace->link_state = 'offline';

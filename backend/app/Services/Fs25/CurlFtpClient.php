@@ -194,8 +194,8 @@ final class CurlFtpClient
         $opts = [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_USERPWD => $this->username.':'.$this->password,
-            CURLOPT_TIMEOUT => 20,
-            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT => 45,
+            CURLOPT_CONNECTTIMEOUT => 12,
             CURLOPT_FTP_USE_EPSV => true,
             // Many hosters sit behind NAT and advertise a private PASV IP.
             CURLOPT_FTP_SKIP_PASV_IP => true,

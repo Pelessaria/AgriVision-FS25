@@ -52,22 +52,38 @@ export function VehiclesPage() {
   useEffect(() => {
     if (!workspace || !liveMode || !allowed || !equipmentAccess) return
     let cancelled = false
-    setLoading(true)
-    void (async () => {
+    let pollTimer: ReturnType<typeof setTimeout> | undefined
+    let passes = 0
+
+    const load = async (showSpinner: boolean) => {
+      if (showSpinner) setLoading(true)
       try {
         const result = await apiWorkspaceVehicles(workspace.id)
         if (cancelled) return
         replaceWorkspaceVehicles(workspace.id, result.vehicles)
         if (result.farms) replaceWorkspaceFarms(workspace.id, result.farms)
         if (result.workspace) upsertWorkspace(result.workspace)
+        const pending =
+          typeof result.iconSync?.pending === "number" ? result.iconSync.pending : 0
+        const missingIcons = result.vehicles.some((vehicle) => !vehicle.iconUrl)
+        // Incremental FTP pulls a batch per request — refresh while icons are still missing.
+        if ((pending > 0 || missingIcons) && passes < 12) {
+          passes += 1
+          pollTimer = setTimeout(() => {
+            void load(false)
+          }, 35_000)
+        }
       } catch {
         /* keep previous */
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!cancelled && showSpinner) setLoading(false)
       }
-    })()
+    }
+
+    void load(true)
     return () => {
       cancelled = true
+      if (pollTimer) clearTimeout(pollTimer)
     }
   }, [workspace?.id, liveMode, allowed, equipmentAccess])
 
