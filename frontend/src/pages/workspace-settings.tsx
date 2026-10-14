@@ -7,6 +7,7 @@ import {
   downloadConnectorPackage,
   type ConnectorPackageMeta,
 } from "../api"
+import { RequiredModsPanel } from "../components/required-mods"
 import { FieldTip, MissingWorkspace, Modal, PermissionBlock } from "../components/ui"
 import { useStore } from "../store"
 import type { HostProtocol } from "../types"
@@ -536,6 +537,11 @@ export function WorkspaceSettingsPage() {
                   <strong>{workspace.connectorVersion ?? t("workspace.noVersion")}</strong>
                 </span>
               </p>
+              <RequiredModsPanel
+                workspaceId={workspace.id}
+                settingsPath={`/w/${workspace.id}/settings`}
+                compact
+              />
               <div className="setting-actions">
                 <button type="button" className="btn btn-secondary" disabled={testing} onClick={() => void test()}>
                   {testing ? <LoaderCircle className="icon spin" /> : null}
@@ -544,7 +550,7 @@ export function WorkspaceSettingsPage() {
                 <button type="button" className="btn btn-ghost" onClick={() => setDialog("confirm")}>
                   {t("card.recouple")}
                 </button>
-                <button type="button" className="btn btn-ghost" onClick={() => setDialog("download")}>
+                <button type="button" className="btn btn-primary" onClick={() => setDialog("download")}>
                   {t("card.download")}
                 </button>
               </div>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { apiWorkspaceVehicles } from "../api"
+import { RequiredModsPanel } from "../components/required-mods"
 import { EmptyState, MissingValue, MissingWorkspace, PermissionBlock, useTimeLabel } from "../components/ui"
 import { farmDisplayName } from "../farm-label"
 import { APP_MODULES } from "../modules"
@@ -122,6 +123,10 @@ export function WorkspaceHomePage() {
       </div>
 
       {notice ? <p className="notice">{t(`notice.${notice}`)}</p> : null}
+
+      {liveMode ? (
+        <RequiredModsPanel workspaceId={workspace.id} settingsPath={`/w/${workspace.id}/settings`} />
+      ) : null}
 
       <div className="stat-grid ws-dash-stats">
         <div className="stat-tile">

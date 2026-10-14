@@ -257,6 +257,32 @@ export async function apiDeployConnector(
   })
 }
 
+export type RequiredModStatus = {
+  id: string
+  title: string
+  zipName: string
+  required: boolean
+  deployable: boolean
+  installed: boolean
+  activated: boolean
+  installedPath: string | null
+  runningVersion: string | null
+  packageVersion: string | null
+  status: "active" | "installed" | "missing"
+}
+
+export type RequiredModsResponse = {
+  mods: RequiredModStatus[]
+  checkedAt: string
+  packageVersion: string | null
+  hostAccess: boolean
+  feedModsCount: number
+}
+
+export async function apiRequiredMods(workspaceId: string): Promise<RequiredModsResponse> {
+  return apiFetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/required-mods`)
+}
+
 /** Trigger authenticated download of the packaged connector zip. */
 export async function downloadConnectorPackage(): Promise<void> {
   const response = await fetch("/api/system/connector/package", {

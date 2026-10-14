@@ -1428,6 +1428,86 @@ h1.title-with-no { display: flex; }
   color: var(--accent);
   white-space: nowrap;
 }
+.required-mods {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.required-mods.compact {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+.required-mods-head {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.required-mods-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.required-mods-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.required-mod-row {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 92%, #000);
+}
+.required-mod-row.status-active {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+.required-mod-row.status-missing {
+  border-color: color-mix(in srgb, #ff6d88 35%, var(--line));
+}
+.required-mod-main {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.required-mod-main strong {
+  font-size: 0.92rem;
+}
+.required-mod-badge {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.required-mod-badge.status-active {
+  color: var(--accent);
+}
+.required-mod-badge.status-missing {
+  color: #ff6d88;
+}
+.required-mod-badge.status-installed {
+  color: #e6b84d;
+}
+.required-mod-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  font-size: 0.8rem;
+}
+.required-mod-flags .ok {
+  color: var(--accent);
+}
+.required-mod-flags .no {
+  color: var(--muted);
+}
+.required-mod-meta {
+  font-size: 0.75rem;
+  word-break: break-word;
+}
 .instance-version,
 .host-savegame-echo {
   display: flex;

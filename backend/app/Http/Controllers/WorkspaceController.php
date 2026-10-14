@@ -6,6 +6,7 @@ use App\Models\Workspace;
 use App\Services\Fs25\ConnectorDeployService;
 use App\Services\Fs25\ConnectorSnapshotService;
 use App\Services\Fs25\HostAccessService;
+use App\Services\Fs25\RequiredModsService;
 use App\Services\Fs25\WorkspaceFeedService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -208,6 +209,13 @@ class WorkspaceController extends Controller
         $result = $deploy->deploy($row, $modsPath);
 
         return response()->json($result, $result['ok'] ? 200 : 422);
+    }
+
+    public function requiredMods(string $workspace, RequiredModsService $mods): JsonResponse
+    {
+        $row = $this->findWorkspace($workspace);
+
+        return response()->json($mods->status($row));
     }
 
     public function connectorIcon(string $workspace, string $modKey, ConnectorSnapshotService $connector): BinaryFileResponse|Response

@@ -38,6 +38,34 @@ final class ConnectorDeployService
 
     public function packageVersion(): ?string
     {
+        try {
+            $zipPath = $this->packagePath();
+        } catch (Throwable) {
+            return $this->versionFromModDescFile();
+        }
+
+        if (! class_exists(\ZipArchive::class)) {
+            return $this->versionFromModDescFile();
+        }
+
+        $zip = new \ZipArchive;
+        if ($zip->open($zipPath) !== true) {
+            return $this->versionFromModDescFile();
+        }
+        $raw = $zip->getFromName('modDesc.xml');
+        $zip->close();
+        if (! is_string($raw) || $raw === '') {
+            return $this->versionFromModDescFile();
+        }
+        if (preg_match('/<version>\s*([^<]+)\s*<\/version>/i', $raw, $m)) {
+            return trim($m[1]) ?: null;
+        }
+
+        return null;
+    }
+
+    private function versionFromModDescFile(): ?string
+    {
         $modDesc = $this->modDescPath();
         if ($modDesc === null) {
             return null;
@@ -72,7 +100,7 @@ final class ConnectorDeployService
             }
 
             $client = new HostFileClient($access);
-            $modsDir = $this->resolveModsDirectory($client, $access, $modsPathHint);
+            $modsDir = self::resolveModsDirectory($client, $access, $modsPathHint);
             $client->ensureDirectory($modsDir);
             $remote = rtrim($modsDir, '/').'/'.self::MOD_ZIP;
             $client->write($remote, $contents);
@@ -89,7 +117,7 @@ final class ConnectorDeployService
         }
     }
 
-    private function resolveModsDirectory(HostFileClient $client, HostAccess $access, ?string $hint): string
+    public static function resolveModsDirectory(HostFileClient $client, HostAccess $access, ?string $hint = null): string
     {
         $hint = $hint !== null ? trim(str_replace('\\', '/', $hint)) : '';
         if ($hint !== '') {
@@ -102,16 +130,16 @@ final class ConnectorDeployService
             $siblings = ['mods', 'Mods', 'MODS'];
             foreach ($siblings as $name) {
                 $candidate = $parent === '' || $parent === '.' ? $name : $parent.'/'.$name;
-                if ($client->fileExists($candidate) || $this->dirLooksPresent($client, $candidate)) {
+                if ($client->fileExists($candidate) || self::dirLooksPresent($client, $candidate)) {
                     return $candidate;
                 }
             }
-            // Create beside modSettings when missing.
+
             return $parent === '' || $parent === '.' ? 'mods' : $parent.'/mods';
         }
 
         foreach (['mods', 'Mods', 'My Games/FarmingSimulator25/mods', 'Documents/My Games/FarmingSimulator25/mods'] as $candidate) {
-            if ($this->dirLooksPresent($client, $candidate)) {
+            if (self::dirLooksPresent($client, $candidate)) {
                 return $candidate;
             }
         }
@@ -119,7 +147,7 @@ final class ConnectorDeployService
         return 'mods';
     }
 
-    private function dirLooksPresent(HostFileClient $client, string $path): bool
+    private static function dirLooksPresent(HostFileClient $client, string $path): bool
     {
         try {
             $client->listDirectories($path);

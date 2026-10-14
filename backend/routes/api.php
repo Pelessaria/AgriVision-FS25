@@ -28,6 +28,7 @@ Route::middleware('auth:web')->group(function () {
     Route::get('/system/connector/package', [WorkspaceController::class, 'connectorPackage']);
     Route::get('/system/connector/package/meta', [WorkspaceController::class, 'connectorPackageMeta']);
     Route::post('/workspaces/{workspace}/connector/deploy', [WorkspaceController::class, 'deployConnector']);
+    Route::get('/workspaces/{workspace}/required-mods', [WorkspaceController::class, 'requiredMods']);
     Route::put('/workspaces/{workspace}/host-access', [WorkspaceController::class, 'updateHostAccess']);
     Route::post('/workspaces/{workspace}/host-access/probe', [WorkspaceController::class, 'probeHostAccess']);
     Route::delete('/workspaces/{workspace}/host-access', [WorkspaceController::class, 'deleteHostAccess']);
