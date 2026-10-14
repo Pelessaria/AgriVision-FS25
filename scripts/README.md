@@ -1,22 +1,13 @@
 # Scripts
 
-## `install.sh` — VPS / Self-Hosting
+## `setup-vps.sh` — VPS / Self-Hosting
 
-Installiert AgriVision auf einem Linux-VPS zum Testen (auch für Fortgeschrittene nutzbar).
-
-- Kein Docker  
-- Kein PowerShell  
-- Kein Web-Installer  
-
-Siehe Kommentar und `--help` in der Datei.
+Installiert AgriVision auf einem Linux-VPS (Pakete, optional MariaDB/Nginx, NPM-ready).
 
 ```bash
-# Fresh download (jsDelivr avoids stale raw.githubusercontent.com cache):
-curl -fsSL https://cdn.jsdelivr.net/gh/Pelessaria/AgriVision-FS25@main/scripts/install.sh -o install.sh
-chmod +x install.sh
-./install.sh --help
-
-# Or from a clone:
-chmod +x scripts/install.sh
-./scripts/install.sh --help
+curl -fsSL https://raw.githubusercontent.com/Pelessaria/AgriVision-FS25/main/scripts/setup-vps.sh -o setup-vps.sh
+chmod +x setup-vps.sh
+sudo ./setup-vps.sh --help
 ```
+
+`install.sh` ist nur noch ein Shim (CDN-Cache-Probleme mit der alten Datei).

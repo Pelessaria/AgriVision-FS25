@@ -43,13 +43,15 @@ Anmeldung im Prototyp: beliebige gültige E-Mail und ein Passwort mit mindestens
 ## VPS-Installation (Test / hinter NPM)
 
 ```bash
-sudo ./scripts/install.sh --target /var/www/agrivision \
+curl -fsSL https://raw.githubusercontent.com/Pelessaria/AgriVision-FS25/main/scripts/setup-vps.sh -o setup-vps.sh
+chmod +x setup-vps.sh
+sudo ./setup-vps.sh --target /var/www/agrivision \
   --with-db --with-nginx --behind-proxy --listen-port 8080 --migrate \
   --db-password 'secret' \
   --app-url https://agrivision.pelessaria.de
 ```
 
-Details: [docs/INSTALLATION.md](docs/INSTALLATION.md), [docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md). **Kein Docker.** Updates: [docs/UPDATES.md](docs/UPDATES.md).  
+Details: [docs/INSTALLATION.md](docs/INSTALLATION.md), [docs/REVERSE-PROXY.md](docs/REVERSE-PROXY.md).  
 Repo: https://github.com/Pelessaria/AgriVision-FS25
 
 ## Dokumente
