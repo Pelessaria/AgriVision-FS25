@@ -4,7 +4,7 @@ import { LoaderCircle } from "lucide-react"
 import { MissingWorkspace, Modal, PermissionBlock } from "../components/ui"
 import { useStore } from "../store"
 import { useWorkspaceRoute } from "../use-workspace"
-import { isFeedUrl } from "../validate"
+import { isFeedUrl, isFeedUrlWithCode } from "../validate"
 
 export function WorkspaceSettingsPage() {
   const { t } = useTranslation()
@@ -29,7 +29,7 @@ export function WorkspaceSettingsPage() {
   if (!workspace) return <MissingWorkspace />
   if (!allowed || !manage) return <PermissionBlock />
 
-  function saveName(event: FormEvent) {
+  async function saveName(event: FormEvent) {
     event.preventDefault()
     const trimmed = name.trim()
     if (!trimmed) {
@@ -45,18 +45,33 @@ export function WorkspaceSettingsPage() {
       return
     }
     setNameError("")
-    store.renameWorkspace(workspace!.id, trimmed)
-    store.pushToast("ok", t("settings.saved"))
+    try {
+      await store.renameWorkspace(workspace!.id, trimmed)
+      store.pushToast("ok", t("settings.saved"))
+    } catch {
+      store.pushToast("warn", t("settings.saved"))
+    }
   }
 
-  function saveFeed(event: FormEvent) {
+  async function saveFeed(event: FormEvent) {
     event.preventDefault()
-    if (!isFeedUrl(feed)) {
+    const trimmed = feed.trim()
+    const configured = Boolean(workspace?.feedConfigured)
+    const ok =
+      trimmed === "" ||
+      isFeedUrlWithCode(trimmed) ||
+      (configured && isFeedUrl(trimmed) && !trimmed.includes("?"))
+    if (!ok) {
       setFeedError(t("wsettings.feedInvalid"))
       return
     }
     setFeedError("")
-    store.setFeedUrl(workspace!.id, feed.trim())
+    const result = await store.setFeedUrl(workspace!.id, trimmed)
+    if (!result.ok) {
+      setFeedError(result.error ?? t("wsettings.feedInvalid"))
+      store.pushToast("warn", result.error ?? t("wsettings.testOffline"))
+      return
+    }
     store.pushToast("ok", t("wsettings.feedSaved"))
   }
 
@@ -97,7 +112,7 @@ export function WorkspaceSettingsPage() {
         </header>
         <div className="settings-grid">
           <div className="settings-col">
-            <form className="panel settings-card" onSubmit={saveName}>
+            <form className="panel settings-card" onSubmit={(event) => void saveName(event)}>
               <h2>{t("wsettings.name")}</h2>
               <label className="field">
                 <span className="sr">{t("wsettings.name")}</span>
@@ -108,18 +123,41 @@ export function WorkspaceSettingsPage() {
                 <button className="btn btn-primary" type="submit">{t("save")}</button>
               </div>
             </form>
-            <form className="panel settings-card" onSubmit={saveFeed}>
+            <form className="panel settings-card" onSubmit={(event) => void saveFeed(event)}>
               <h2>{t("wsettings.feed")}</h2>
               <label className="field">
                 <span className="sr">{t("wsettings.feed")}</span>
                 <input
                   value={feed}
                   inputMode="url"
+                  placeholder="https://host:8080/feed/dedicated-server-stats.json?code=…"
                   aria-invalid={feedError ? true : undefined}
                   onChange={(event) => setFeed(event.target.value)}
                 />
-                {feedError ? <span className="field-error">{feedError}</span> : <span className="hint">{t("wsettings.feedHint")}</span>}
+                {feedError ? (
+                  <span className="field-error">{feedError}</span>
+                ) : (
+                  <span className="hint">
+                    {workspace.feedConfigured ? t("wsettings.feedHintConfigured") : t("wsettings.feedHint")}
+                  </span>
+                )}
               </label>
+              {workspace.gameVersion || workspace.linkState === "online" ? (
+                <p className="instance-version">
+                  <span>{t("card.gameVersion")}</span>
+                  <strong>{workspace.gameVersion ?? "—"}</strong>
+                  {workspace.playersOnline !== null ? (
+                    <>
+                      <span>{t("card.players")}</span>
+                      <strong>
+                        {workspace.playerCapacity === null
+                          ? workspace.playersOnline
+                          : `${workspace.playersOnline}/${workspace.playerCapacity}`}
+                      </strong>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
               <div className="setting-actions">
                 <button className="btn btn-secondary" type="submit">{t("save")}</button>
               </div>
@@ -155,8 +193,9 @@ export function WorkspaceSettingsPage() {
                     type="button"
                     className="btn btn-secondary"
                     onClick={() => {
-                      store.setDisabled(workspace.id, false)
-                      store.pushToast("ok", t("wsettings.enabled"))
+                      void store.setDisabled(workspace.id, false).then(() => {
+                        store.pushToast("ok", t("wsettings.enabled"))
+                      })
                     }}
                   >
                     {t("wsettings.enable")}
@@ -190,9 +229,10 @@ export function WorkspaceSettingsPage() {
               type="button"
               className="btn btn-danger"
               onClick={() => {
-                store.setDisabled(workspace.id, true)
-                store.pushToast("warn", t("wsettings.disabled"))
-                setDialog(null)
+                void store.setDisabled(workspace.id, true).then(() => {
+                  store.pushToast("warn", t("wsettings.disabled"))
+                  setDialog(null)
+                })
               }}
             >
               {t("wsettings.disable")}

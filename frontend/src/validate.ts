@@ -20,3 +20,15 @@ export function isFeedUrl(value: string) {
     return false
   }
 }
+
+/** Full feed URL with ?code=…, or empty (clear). */
+export function isFeedUrlWithCode(value: string) {
+  const trimmed = value.trim()
+  if (!trimmed) return true
+  if (!isFeedUrl(trimmed)) return false
+  try {
+    return new URL(trimmed).searchParams.has("code")
+  } catch {
+    return false
+  }
+}

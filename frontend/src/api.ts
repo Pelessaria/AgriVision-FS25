@@ -94,6 +94,31 @@ export async function apiCreateWorkspace(name: string): Promise<{ workspace: Wor
   })
 }
 
+export async function apiUpdateWorkspace(
+  id: string,
+  patch: {
+    name?: string
+    disabled?: boolean
+    feedUrl?: string | null
+    keepCode?: boolean
+    sync?: boolean
+  },
+): Promise<{ workspace: Workspace; ok: boolean; error?: string }> {
+  return apiFetch(`/api/workspaces/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  })
+}
+
+export async function apiSyncWorkspace(
+  id: string,
+): Promise<{ workspace: Workspace; ok: boolean; error?: string }> {
+  return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/sync`, {
+    method: "POST",
+    body: "{}",
+  })
+}
+
 /** Probe whether the Laravel API is reachable (not just Vite demo). */
 export async function apiIsLive(): Promise<boolean> {
   try {

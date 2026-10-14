@@ -17,6 +17,7 @@ final class WorkspaceFeedSync
             'data_mode' => 'live',
             'map_name' => $snapshot->mapName,
             'game_version' => $snapshot->gameVersion,
+            'day_time_ms' => $snapshot->dayTimeMs,
             'map_size' => $snapshot->mapSize,
             'players_online' => $snapshot->playersOnline,
             'player_capacity' => $snapshot->playerCapacity,

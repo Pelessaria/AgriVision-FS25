@@ -87,12 +87,19 @@ export function ControlPage() {
     return items
   }, [accessible, filter, i18n.language, query, sort])
 
-  function refresh() {
+  async function refresh() {
     setPhase("loading")
-    window.setTimeout(() => {
+    try {
+      if (store.liveMode) {
+        await store.refreshWorkspaces()
+      } else {
+        await new Promise((resolve) => window.setTimeout(resolve, 400))
+      }
       setUpdatedAt(new Date().toISOString())
       setPhase("ready")
-    }, 700)
+    } catch {
+      setPhase("error")
+    }
   }
 
   async function testConnection(id: string) {
@@ -245,7 +252,7 @@ export function ControlPage() {
                   aria-label={t("card.openMap", { name: workspace.name })}
                   onClick={() => navigate(`/w/${workspace.id}`)}
                 >
-                  <MapPreview url={mapPreviewUrl(workspace.feedUrl)} label={workspace.mapName ?? t("card.map")} />
+                  <MapPreview url={mapPreviewUrl(workspace)} label={workspace.mapName ?? t("card.map")} />
                   <span className={`status-pill ${workspace.disabled ? "unknown" : workspace.linkState}`}>
                     <span className={`dot ${workspace.disabled ? "unknown" : workspace.linkState}`} />
                     {workspace.disabled ? t("card.disabled") : t(`link.${workspace.linkState}`)}
@@ -281,6 +288,10 @@ export function ControlPage() {
                     <div>
                       <dt>{t("card.gameTime")}</dt>
                       <dd><MissingValue text={workspace.gameTime} /></dd>
+                    </div>
+                    <div>
+                      <dt>{t("card.gameVersion")}</dt>
+                      <dd><MissingValue text={workspace.gameVersion ?? null} /></dd>
                     </div>
                   </dl>
                   <div className="card-actions">
@@ -320,9 +331,10 @@ export function ControlPage() {
                             <button
                               type="button"
                               onClick={() => {
-                                store.setDisabled(workspace.id, false)
-                                store.pushToast("ok", t("wsettings.enabled"))
-                                setMenuId(null)
+                                void store.setDisabled(workspace.id, false).then(() => {
+                                  store.pushToast("ok", t("wsettings.enabled"))
+                                  setMenuId(null)
+                                })
                               }}
                             >
                               {t("card.enable")}
@@ -370,9 +382,10 @@ export function ControlPage() {
               type="button"
               className="btn btn-danger"
               onClick={() => {
-                store.setDisabled(dialog.id, true)
-                store.pushToast("warn", t("wsettings.disabled"))
-                closeDialog()
+                void store.setDisabled(dialog.id, true).then(() => {
+                  store.pushToast("warn", t("wsettings.disabled"))
+                  closeDialog()
+                })
               }}
             >
               {t("wsettings.disable")}

@@ -6,7 +6,16 @@ import {
   useState,
   type ReactNode,
 } from "react"
-import { apiCreateWorkspace, apiIsLive, apiLogin, apiLogout, apiMe, apiWorkspaces } from "./api"
+import {
+  apiCreateWorkspace,
+  apiIsLive,
+  apiLogin,
+  apiLogout,
+  apiMe,
+  apiSyncWorkspace,
+  apiUpdateWorkspace,
+  apiWorkspaces,
+} from "./api"
 import { seedActivity, seedFarms, seedUsers, seedVehicles, seedWorkspaces, demoCode } from "./demo"
 import { seedGroups } from "./groups"
 import { defaultMailSettings, normalizeMailSettings } from "./mail"
@@ -78,10 +87,11 @@ interface Store {
   setSelectedFarm: (workspaceId: string, farmId: string) => void
   farmByGameId: (workspaceId: string, gameFarmId: number | null) => Farm | null
   createWorkspace: (name: string) => Promise<{ workspace: Workspace; code: string }>
-  renameWorkspace: (id: string, name: string) => void
-  setFeedUrl: (id: string, feedUrl: string) => void
-  setDisabled: (id: string, disabled: boolean) => void
+  renameWorkspace: (id: string, name: string) => Promise<void>
+  setFeedUrl: (id: string, feedUrl: string) => Promise<{ ok: boolean; error?: string }>
+  setDisabled: (id: string, disabled: boolean) => Promise<void>
   testConnection: (id: string) => Promise<"ok" | "offline" | "unpaired" | "disabled">
+  refreshWorkspaces: () => Promise<void>
   revealCode: (id: string) => string
   hideCode: (id: string) => void
   createUser: (name: string, email: string) => string | "taken"
@@ -503,25 +513,67 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setReveals((current) => ({ ...current, [workspace.id]: code }))
       return { workspace, code }
     },
-    renameWorkspace: (id, name) => {
+    renameWorkspace: async (id, name) => {
+      if (liveMode) {
+        const result = await apiUpdateWorkspace(id, { name })
+        setWorkspaces((current) => current.map((item) => (item.id === id ? result.workspace : item)))
+        return
+      }
       setWorkspaces((current) =>
         current.map((workspace) => (workspace.id === id ? { ...workspace, name } : workspace)),
       )
     },
-    setFeedUrl: (id, feedUrl) => {
+    setFeedUrl: async (id, feedUrl) => {
+      if (liveMode) {
+        const trimmed = feedUrl.trim()
+        const existing = workspaces.find((item) => item.id === id)
+        const keepCode = Boolean(existing?.feedConfigured && trimmed && !trimmed.includes("code="))
+        try {
+          const result = await apiUpdateWorkspace(id, {
+            feedUrl: trimmed,
+            keepCode,
+            sync: trimmed !== "",
+          })
+          setWorkspaces((current) => current.map((item) => (item.id === id ? result.workspace : item)))
+          if (!result.ok) return { ok: false, error: result.error }
+          return { ok: true }
+        } catch (error) {
+          return {
+            ok: false,
+            error: error instanceof Error ? error.message : "Feed speichern fehlgeschlagen",
+          }
+        }
+      }
       setWorkspaces((current) =>
         current.map((workspace) => (workspace.id === id ? { ...workspace, feedUrl } : workspace)),
       )
+      return { ok: true }
     },
-    setDisabled: (id, disabled) => {
+    setDisabled: async (id, disabled) => {
+      if (liveMode) {
+        const result = await apiUpdateWorkspace(id, { disabled })
+        setWorkspaces((current) => current.map((item) => (item.id === id ? result.workspace : item)))
+        return
+      }
       setWorkspaces((current) =>
         current.map((workspace) => (workspace.id === id ? { ...workspace, disabled } : workspace)),
       )
     },
     testConnection: async (id) => {
       const workspace = workspaces.find((item) => item.id === id)
-      await new Promise((resolve) => window.setTimeout(resolve, 700))
       if (!workspace || workspace.disabled) return "disabled"
+      if (liveMode) {
+        if (!workspace.feedConfigured && !workspace.feedUrl) return "unpaired"
+        try {
+          const result = await apiSyncWorkspace(id)
+          setWorkspaces((current) => current.map((item) => (item.id === id ? result.workspace : item)))
+          if (!result.ok) return "offline"
+          return result.workspace.linkState === "online" ? "ok" : "offline"
+        } catch {
+          return "offline"
+        }
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 700))
       if (workspace.linkState === "unpaired") return "unpaired"
       if (workspace.linkState === "offline" || workspace.linkState === "error") return "offline"
       const stamp = new Date().toISOString()
@@ -529,6 +581,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         current.map((item) => (item.id === id ? { ...item, lastSeenAt: stamp } : item)),
       )
       return "ok"
+    },
+    refreshWorkspaces: async () => {
+      if (!liveMode) return
+      const list = await apiWorkspaces()
+      setWorkspaces(list)
     },
     revealCode: (id) => {
       const code = demoCode()

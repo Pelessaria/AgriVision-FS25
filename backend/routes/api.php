@@ -18,6 +18,10 @@ Route::middleware('auth:web')->group(function () {
 
     Route::get('/workspaces', [WorkspaceController::class, 'index']);
     Route::post('/workspaces', [WorkspaceController::class, 'store']);
+    Route::get('/workspaces/{workspace}', [WorkspaceController::class, 'show']);
+    Route::patch('/workspaces/{workspace}', [WorkspaceController::class, 'update']);
+    Route::post('/workspaces/{workspace}/sync', [WorkspaceController::class, 'sync']);
+    Route::get('/workspaces/{workspace}/map', [WorkspaceController::class, 'map']);
 
     Route::get('/system/update', [SystemUpdateController::class, 'status']);
     Route::post('/system/update', [SystemUpdateController::class, 'apply']);

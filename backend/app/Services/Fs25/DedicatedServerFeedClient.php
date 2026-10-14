@@ -78,6 +78,11 @@ class DedicatedServerFeedClient
         return $this->baseUrl;
     }
 
+    public function code(): string
+    {
+        return $this->code;
+    }
+
     /**
      * @return array<string, mixed>
      */

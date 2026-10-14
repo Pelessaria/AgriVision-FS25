@@ -79,11 +79,17 @@ export interface Workspace {
   playersOnline: number | null
   playerCapacity: number | null
   gameTime: string | null
+  gameVersion?: string | null
   lastSeenAt: string | null
   lastSyncAt: string | null
   connectorVersion: string | null
   notice: "unpaired" | "stale" | "feed" | "disabled" | null
+  /** Origin only (no feed code). */
   feedUrl: string
+  feedConfigured?: boolean
+  mapPreviewPath?: string | null
+  dataMode?: "live" | "demo" | "empty"
+  statusNote?: string | null
 }
 
 /** In-game farm (Hof) inside a gameserver workspace. */

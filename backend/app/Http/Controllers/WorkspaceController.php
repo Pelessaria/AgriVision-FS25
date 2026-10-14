@@ -3,9 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Workspace;
+use App\Services\Fs25\WorkspaceFeedService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
+use Throwable;
 
 class WorkspaceController extends Controller
 {
@@ -15,6 +20,15 @@ class WorkspaceController extends Controller
 
         return response()->json([
             'workspaces' => $rows->map(fn (Workspace $w) => $this->serialize($w))->values(),
+        ]);
+    }
+
+    public function show(string $workspace): JsonResponse
+    {
+        $row = $this->findWorkspace($workspace);
+
+        return response()->json([
+            'workspace' => $this->serialize($row),
         ]);
     }
 
@@ -41,18 +55,128 @@ class WorkspaceController extends Controller
         ], 201);
     }
 
+    public function update(Request $request, string $workspace, WorkspaceFeedService $feeds): JsonResponse
+    {
+        $row = $this->findWorkspace($workspace);
+
+        $data = $request->validate([
+            'name' => ['sometimes', 'string', 'min:2', 'max:40'],
+            'disabled' => ['sometimes', 'boolean'],
+            'feedUrl' => ['sometimes', 'nullable', 'string', 'max:2048'],
+            'keepCode' => ['sometimes', 'boolean'],
+            'sync' => ['sometimes', 'boolean'],
+        ]);
+
+        if (array_key_exists('name', $data)) {
+            $row->display_name = $data['name'];
+            $row->save();
+        }
+
+        if (array_key_exists('disabled', $data)) {
+            $row->lifecycle = $data['disabled'] ? 'disabled' : 'active';
+            $row->save();
+        }
+
+        if (array_key_exists('feedUrl', $data)) {
+            try {
+                $feeds->configure(
+                    $row,
+                    $data['feedUrl'],
+                    (bool) ($data['keepCode'] ?? false),
+                );
+                $row->refresh();
+            } catch (InvalidArgumentException $e) {
+                throw ValidationException::withMessages([
+                    'feedUrl' => [$e->getMessage()],
+                ]);
+            }
+
+            if ($request->boolean('sync') && filled($row->feed_base_url) && $row->feedCode()) {
+                try {
+                    $feeds->sync($row);
+                    $row->refresh();
+                } catch (Throwable $e) {
+                    // 200 so the SPA still receives the saved workspace (credentials kept).
+                    return response()->json([
+                        'workspace' => $this->serialize($row->fresh()),
+                        'ok' => false,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        return response()->json([
+            'workspace' => $this->serialize($row->fresh()),
+            'ok' => true,
+        ]);
+    }
+
+    public function sync(string $workspace, WorkspaceFeedService $feeds): JsonResponse
+    {
+        $row = $this->findWorkspace($workspace);
+
+        try {
+            $feeds->sync($row);
+        } catch (Throwable $e) {
+            return response()->json([
+                'ok' => false,
+                'error' => $e->getMessage(),
+                'workspace' => $this->serialize($row->fresh()),
+            ]);
+        }
+
+        return response()->json([
+            'ok' => true,
+            'workspace' => $this->serialize($row->fresh()),
+        ]);
+    }
+
+    public function map(string $workspace, WorkspaceFeedService $feeds): Response
+    {
+        $row = $this->findWorkspace($workspace);
+
+        try {
+            $jpeg = $feeds->fetchMapJpeg($row);
+        } catch (Throwable $e) {
+            return response($e->getMessage(), 502)
+                ->header('Content-Type', 'text/plain; charset=UTF-8');
+        }
+
+        return response($jpeg, 200, [
+            'Content-Type' => 'image/jpeg',
+            'Cache-Control' => 'private, max-age=60',
+        ]);
+    }
+
+    private function findWorkspace(string $key): Workspace
+    {
+        $row = Workspace::query()
+            ->where(function ($query) use ($key) {
+                $query->where('public_id', $key)->orWhere('id', $key);
+            })
+            ->first();
+
+        if (! $row) {
+            abort(404, 'Workspace not found.');
+        }
+
+        return $row;
+    }
+
     /**
      * @return array<string, mixed>
      */
     private function serialize(Workspace $w): array
     {
         $disabled = $w->lifecycle === 'disabled';
+        $feedConfigured = filled($w->feed_code_encrypted) && filled($w->feed_base_url);
         $notice = null;
         if ($disabled) {
             $notice = 'disabled';
-        } elseif ($w->link_state === 'unpaired') {
+        } elseif ($w->link_state === 'unpaired' || ! $feedConfigured) {
             $notice = 'unpaired';
-        } elseif ($w->feed_base_url === null || $w->feed_base_url === '') {
+        } elseif ($w->link_state === 'offline' || $w->link_state === 'error') {
             $notice = 'feed';
         }
 
@@ -65,13 +189,38 @@ class WorkspaceController extends Controller
             'mapName' => $w->map_name,
             'playersOnline' => $w->players_online,
             'playerCapacity' => $w->player_capacity,
-            'gameTime' => null,
+            'gameTime' => $this->formatGameTime($w->day_time_ms),
+            'gameVersion' => $w->game_version,
             'lastSeenAt' => optional($w->last_seen_at)?->toIso8601String(),
             'lastSyncAt' => optional($w->last_sync_at)?->toIso8601String(),
             'connectorVersion' => $w->connector_version,
             'notice' => $notice,
+            // Origin only — never the feed code.
             'feedUrl' => $w->feed_base_url ?? '',
+            'feedConfigured' => $feedConfigured,
+            'mapPreviewPath' => $feedConfigured ? '/api/workspaces/'.$w->public_id.'/map' : null,
             'dataMode' => $w->data_mode,
+            'statusNote' => $w->status_note,
         ];
+    }
+
+    private function formatGameTime(mixed $dayTimeMs): ?string
+    {
+        if ($dayTimeMs === null || $dayTimeMs === '') {
+            return null;
+        }
+        if (! is_numeric($dayTimeMs)) {
+            return null;
+        }
+        $ms = (int) $dayTimeMs;
+        if ($ms < 0) {
+            return null;
+        }
+        // Giants dayTime is milliseconds into the in-game day.
+        $totalMinutes = intdiv($ms, 60000) % (24 * 60);
+        $hours = intdiv($totalMinutes, 60);
+        $minutes = $totalMinutes % 60;
+
+        return sprintf('%02d:%02d', $hours, $minutes);
     }
 }
