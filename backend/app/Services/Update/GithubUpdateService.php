@@ -123,6 +123,7 @@ final class GithubUpdateService
             }
 
             $this->fixWebPermissions();
+            $this->syncComposerDependencies();
 
             $migrationsRan = false;
             try {
@@ -498,6 +499,43 @@ final class GithubUpdateService
         }
 
         return false;
+    }
+
+    /**
+     * Best-effort: install new PHP deps when composer.lock changes (vendor/ is preserved).
+     */
+    private function syncComposerDependencies(): void
+    {
+        $base = base_path();
+        $phar = $base.DIRECTORY_SEPARATOR.'composer.phar';
+        $php = PHP_BINARY !== '' ? PHP_BINARY : 'php';
+
+        if (is_file($phar)) {
+            $cmd = escapeshellarg($php).' '.escapeshellarg($phar)
+                .' install --no-dev --optimize-autoloader --no-interaction';
+        } else {
+            $which = trim((string) shell_exec('command -v composer 2>/dev/null'));
+            if ($which === '') {
+                return;
+            }
+            $cmd = escapeshellarg($which).' install --no-dev --optimize-autoloader --no-interaction';
+        }
+
+        $descriptor = [
+            0 => ['pipe', 'r'],
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+        $proc = proc_open($cmd, $descriptor, $pipes, $base, null);
+        if (! is_resource($proc)) {
+            return;
+        }
+        fclose($pipes[0]);
+        stream_get_contents($pipes[1]);
+        stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        proc_close($proc);
     }
 
     /**

@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
 
@@ -65,5 +67,15 @@ class Workspace extends Model
         }
 
         return Crypt::decryptString($this->feed_code_encrypted);
+    }
+
+    public function hostAccess(): HasOne
+    {
+        return $this->hasOne(HostAccess::class);
+    }
+
+    public function gameFarms(): HasMany
+    {
+        return $this->hasMany(GameFarm::class);
     }
 }

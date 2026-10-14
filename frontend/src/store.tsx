@@ -8,13 +8,17 @@ import {
 } from "react"
 import {
   apiCreateWorkspace,
+  apiDeleteHostAccess,
   apiIsLive,
   apiLogin,
   apiLogout,
   apiMe,
+  apiProbeHostAccess,
+  apiSaveHostAccess,
   apiSyncWorkspace,
   apiUpdateWorkspace,
   apiWorkspaces,
+  type HostAccessPayload,
 } from "./api"
 import { seedActivity, seedFarms, seedUsers, seedVehicles, seedWorkspaces, demoCode } from "./demo"
 import { seedGroups } from "./groups"
@@ -89,6 +93,12 @@ interface Store {
   createWorkspace: (name: string) => Promise<{ workspace: Workspace; code: string }>
   renameWorkspace: (id: string, name: string) => Promise<void>
   setFeedUrl: (id: string, feedUrl: string) => Promise<{ ok: boolean; error?: string }>
+  setHostAccess: (
+    id: string,
+    payload: HostAccessPayload,
+  ) => Promise<{ ok: boolean; error?: string; workspace?: Workspace }>
+  probeHostAccess: (id: string) => Promise<{ ok: boolean; error?: string; workspace?: Workspace }>
+  clearHostAccess: (id: string) => Promise<void>
   setDisabled: (id: string, disabled: boolean) => Promise<void>
   testConnection: (id: string) => Promise<"ok" | "offline" | "unpaired" | "disabled">
   refreshWorkspaces: (options?: { sync?: boolean }) => Promise<void>
@@ -553,6 +563,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         current.map((workspace) => (workspace.id === id ? { ...workspace, feedUrl } : workspace)),
       )
       return { ok: true }
+    },
+    setHostAccess: async (id, payload) => {
+      if (!liveMode) return { ok: false, error: "Nur im Live-Modus" }
+      try {
+        const result = await apiSaveHostAccess(id, payload)
+        setWorkspaces((current) => current.map((item) => (item.id === id ? result.workspace : item)))
+        if (result.farms) {
+          setFarms((current) => [...current.filter((farm) => farm.workspaceId !== id), ...result.farms])
+        }
+        if (!result.ok) return { ok: false, error: result.error ?? undefined, workspace: result.workspace }
+        return { ok: true, workspace: result.workspace }
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : "Dateizugang speichern fehlgeschlagen",
+        }
+      }
+    },
+    probeHostAccess: async (id) => {
+      if (!liveMode) return { ok: false, error: "Nur im Live-Modus" }
+      try {
+        const result = await apiProbeHostAccess(id)
+        setWorkspaces((current) => current.map((item) => (item.id === id ? result.workspace : item)))
+        if (result.farms) {
+          setFarms((current) => [...current.filter((farm) => farm.workspaceId !== id), ...result.farms])
+        }
+        if (!result.ok) return { ok: false, error: result.error ?? undefined, workspace: result.workspace }
+        return { ok: true, workspace: result.workspace }
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : "Dateizugang prüfen fehlgeschlagen",
+        }
+      }
+    },
+    clearHostAccess: async (id) => {
+      if (!liveMode) return
+      const result = await apiDeleteHostAccess(id)
+      setWorkspaces((current) => current.map((item) => (item.id === id ? result.workspace : item)))
     },
     setDisabled: async (id, disabled) => {
       if (liveMode) {

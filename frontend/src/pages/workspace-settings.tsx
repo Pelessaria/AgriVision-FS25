@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next"
 import { LoaderCircle } from "lucide-react"
 import { FieldTip, MissingWorkspace, Modal, PermissionBlock } from "../components/ui"
 import { useStore } from "../store"
+import type { HostProtocol } from "../types"
 import { useWorkspaceRoute } from "../use-workspace"
 import { isFeedUrl, isFeedUrlWithCode } from "../validate"
 
@@ -14,6 +15,18 @@ export function WorkspaceSettingsPage() {
   const [nameError, setNameError] = useState("")
   const [feed, setFeed] = useState(workspace?.feedUrl ?? "")
   const [feedError, setFeedError] = useState("")
+  const host = workspace?.hostAccess
+  const [protocol, setProtocol] = useState<HostProtocol>(host?.protocol ?? "sftp")
+  const [hostName, setHostName] = useState(host?.host ?? "")
+  const [port, setPort] = useState(host?.port ? String(host.port) : "22")
+  const [username, setUsername] = useState(host?.username ?? "")
+  const [password, setPassword] = useState("")
+  const [remoteRoot, setRemoteRoot] = useState(host?.remoteRoot ?? "")
+  const [savegamePath, setSavegamePath] = useState(host?.remoteSavegamePath ?? "")
+  const [modSettingsPath, setModSettingsPath] = useState(host?.remoteModSettingsPath ?? "")
+  const [insecureAck, setInsecureAck] = useState(false)
+  const [hostError, setHostError] = useState("")
+  const [hostBusy, setHostBusy] = useState(false)
   const [syncedId, setSyncedId] = useState(workspace?.id)
   if (workspace && syncedId !== workspace.id) {
     setSyncedId(workspace.id)
@@ -21,6 +34,17 @@ export function WorkspaceSettingsPage() {
     setFeed(workspace.feedUrl)
     setNameError("")
     setFeedError("")
+    const next = workspace.hostAccess
+    setProtocol(next?.protocol ?? "sftp")
+    setHostName(next?.host ?? "")
+    setPort(next?.port ? String(next.port) : next?.protocol === "sftp" ? "22" : "21")
+    setUsername(next?.username ?? "")
+    setPassword("")
+    setRemoteRoot(next?.remoteRoot ?? "")
+    setSavegamePath(next?.remoteSavegamePath ?? "")
+    setModSettingsPath(next?.remoteModSettingsPath ?? "")
+    setInsecureAck(false)
+    setHostError("")
   }
   const [testing, setTesting] = useState(false)
   const [dialog, setDialog] = useState<"download" | "disable" | "confirm" | "code" | null>(null)
@@ -28,6 +52,8 @@ export function WorkspaceSettingsPage() {
 
   if (!workspace) return <MissingWorkspace />
   if (!allowed || !manage) return <PermissionBlock />
+
+  const ws = workspace
 
   async function saveName(event: FormEvent) {
     event.preventDefault()
@@ -46,7 +72,7 @@ export function WorkspaceSettingsPage() {
     }
     setNameError("")
     try {
-      await store.renameWorkspace(workspace!.id, trimmed)
+      await store.renameWorkspace(ws.id, trimmed)
       store.pushToast("ok", t("settings.saved"))
     } catch {
       store.pushToast("warn", t("settings.saved"))
@@ -56,7 +82,7 @@ export function WorkspaceSettingsPage() {
   async function saveFeed(event: FormEvent) {
     event.preventDefault()
     const trimmed = feed.trim()
-    const configured = Boolean(workspace?.feedConfigured)
+    const configured = Boolean(ws.feedConfigured)
     const ok =
       trimmed === "" ||
       isFeedUrlWithCode(trimmed) ||
@@ -66,7 +92,7 @@ export function WorkspaceSettingsPage() {
       return
     }
     setFeedError("")
-    const result = await store.setFeedUrl(workspace!.id, trimmed)
+    const result = await store.setFeedUrl(ws.id, trimmed)
     if (!result.ok) {
       setFeedError(result.error ?? t("wsettings.feedInvalid"))
       store.pushToast("warn", result.error ?? t("wsettings.testOffline"))
@@ -75,9 +101,66 @@ export function WorkspaceSettingsPage() {
     store.pushToast("ok", t("wsettings.feedSaved"))
   }
 
+  async function saveHost(event: FormEvent) {
+    event.preventDefault()
+    if (!hostName.trim() || !username.trim()) {
+      setHostError(t("wsettings.hostRequired"))
+      return
+    }
+    if (protocol === "ftp" && !insecureAck && !ws.hostAccess?.insecure) {
+      setHostError(t("wsettings.hostFtpAckRequired"))
+      return
+    }
+    const keepPassword = Boolean(ws.hostAccess?.hasPassword) && password === ""
+    if (!keepPassword && password === "") {
+      setHostError(t("wsettings.hostPasswordRequired"))
+      return
+    }
+    setHostError("")
+    setHostBusy(true)
+    const result = await store.setHostAccess(ws.id, {
+      protocol,
+      host: hostName.trim(),
+      port: port.trim() ? Number(port) : null,
+      username: username.trim(),
+      password: password || undefined,
+      keepPassword,
+      remoteRoot: remoteRoot.trim() || undefined,
+      remoteSavegamePath: savegamePath.trim() || undefined,
+      remoteModSettingsPath: modSettingsPath.trim() || undefined,
+      insecureAck: protocol === "ftp" ? insecureAck || Boolean(ws.hostAccess?.insecure) : false,
+      probe: true,
+    })
+    setHostBusy(false)
+    setPassword("")
+    const refreshed = result.workspace?.hostAccess
+    if (refreshed?.remoteSavegamePath) setSavegamePath(refreshed.remoteSavegamePath)
+    if (refreshed?.remoteModSettingsPath) setModSettingsPath(refreshed.remoteModSettingsPath)
+    if (!result.ok) {
+      setHostError(result.error ?? t("wsettings.hostProbeFail"))
+      store.pushToast("warn", result.error ?? t("wsettings.hostProbeFail"))
+      return
+    }
+    store.pushToast("ok", t("wsettings.hostSaved"))
+  }
+
+  async function probeHost() {
+    setHostBusy(true)
+    const result = await store.probeHostAccess(ws.id)
+    setHostBusy(false)
+    const refreshed = result.workspace?.hostAccess
+    if (refreshed?.remoteSavegamePath) setSavegamePath(refreshed.remoteSavegamePath)
+    if (refreshed?.remoteModSettingsPath) setModSettingsPath(refreshed.remoteModSettingsPath)
+    if (!result.ok) {
+      store.pushToast("warn", result.error ?? t("wsettings.hostProbeFail"))
+      return
+    }
+    store.pushToast("ok", t("wsettings.hostProbeOk"))
+  }
+
   async function test() {
     setTesting(true)
-    const result = await store.testConnection(workspace!.id)
+    const result = await store.testConnection(ws.id)
     setTesting(false)
     const key =
       result === "ok"
@@ -88,6 +171,13 @@ export function WorkspaceSettingsPage() {
             ? "wsettings.testDisabled"
             : "wsettings.testOffline"
     store.pushToast(result === "ok" ? "ok" : "warn", t(key))
+  }
+
+  function onProtocolChange(next: HostProtocol) {
+    setProtocol(next)
+    if (!ws.hostAccess) {
+      setPort(next === "sftp" ? "22" : "21")
+    }
   }
 
   return (
@@ -179,6 +269,164 @@ export function WorkspaceSettingsPage() {
               ) : null}
               <div className="setting-actions">
                 <button className="btn btn-secondary" type="submit">{t("save")}</button>
+              </div>
+            </form>
+
+            <form className="panel settings-card" onSubmit={(event) => void saveHost(event)}>
+              <div className="field-label-row">
+                <h2>{t("wsettings.hostTitle")}</h2>
+                <FieldTip label={t("wsettings.hostTipLabel")}>
+                  <p>{t("wsettings.hostTip")}</p>
+                </FieldTip>
+              </div>
+              <p className="hint">{t("wsettings.hostLead")}</p>
+
+              <label className="field">
+                <span>{t("wsettings.hostProtocol")}</span>
+                <select
+                  value={protocol}
+                  onChange={(event) => onProtocolChange(event.target.value as HostProtocol)}
+                >
+                  <option value="sftp">SFTP</option>
+                  <option value="ftps">FTPS</option>
+                  <option value="ftp">FTP</option>
+                </select>
+              </label>
+
+              <div className="field-row">
+                <label className="field">
+                  <span>{t("wsettings.hostHost")}</span>
+                  <input
+                    value={hostName}
+                    autoComplete="off"
+                    spellCheck={false}
+                    onChange={(event) => setHostName(event.target.value)}
+                  />
+                </label>
+                <label className="field field-narrow">
+                  <span>{t("wsettings.hostPort")}</span>
+                  <input
+                    value={port}
+                    inputMode="numeric"
+                    onChange={(event) => setPort(event.target.value)}
+                  />
+                </label>
+              </div>
+
+              <label className="field">
+                <span>{t("wsettings.hostUser")}</span>
+                <input
+                  value={username}
+                  autoComplete="username"
+                  onChange={(event) => setUsername(event.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>{t("wsettings.hostPassword")}</span>
+                <input
+                  type="password"
+                  value={password}
+                  autoComplete="new-password"
+                  placeholder={
+                    workspace.hostAccess?.hasPassword
+                      ? t("wsettings.hostPasswordKeep")
+                      : undefined
+                  }
+                  onChange={(event) => setPassword(event.target.value)}
+                />
+                <span className="hint">{t("wsettings.hostPasswordHint")}</span>
+              </label>
+
+              <label className="field">
+                <span>{t("wsettings.hostRoot")}</span>
+                <input
+                  value={remoteRoot}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={t("wsettings.hostRootPlaceholder")}
+                  onChange={(event) => setRemoteRoot(event.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>{t("wsettings.hostSavegame")}</span>
+                <input
+                  value={savegamePath}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={t("wsettings.hostSavegamePlaceholder")}
+                  onChange={(event) => setSavegamePath(event.target.value)}
+                />
+              </label>
+
+              <label className="field">
+                <span>{t("wsettings.hostModSettings")}</span>
+                <input
+                  value={modSettingsPath}
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={t("wsettings.hostModSettingsPlaceholder")}
+                  onChange={(event) => setModSettingsPath(event.target.value)}
+                />
+              </label>
+
+              {protocol === "ftp" ? (
+                <label className="check-row">
+                  <input
+                    type="checkbox"
+                    checked={insecureAck || Boolean(workspace.hostAccess?.insecure)}
+                    onChange={(event) => setInsecureAck(event.target.checked)}
+                  />
+                  <span>{t("wsettings.hostFtpAck")}</span>
+                </label>
+              ) : null}
+
+              {hostError ? <p className="field-error">{hostError}</p> : null}
+              {workspace.hostAccess?.status === "ok" ? (
+                <p className="hint">{t("wsettings.hostStatusOk")}</p>
+              ) : null}
+              {workspace.hostAccess?.status === "error" && workspace.hostAccess.lastError ? (
+                <p className="field-error">{workspace.hostAccess.lastError}</p>
+              ) : null}
+              {workspace.hostAccess?.remoteSavegamePath ? (
+                <p className="instance-version">
+                  <span>{t("wsettings.hostSavegame")}</span>
+                  <strong>{workspace.hostAccess.remoteSavegamePath}</strong>
+                </p>
+              ) : null}
+
+              <div className="setting-actions">
+                <button className="btn btn-primary" type="submit" disabled={hostBusy}>
+                  {hostBusy ? <LoaderCircle className="icon spin" /> : null}
+                  {t("wsettings.hostSave")}
+                </button>
+                {workspace.hostAccess?.configured ? (
+                  <>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={hostBusy}
+                      onClick={() => void probeHost()}
+                    >
+                      {t("wsettings.hostProbe")}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-ghost"
+                      disabled={hostBusy}
+                      onClick={() => {
+                        void store.clearHostAccess(workspace.id).then(() => {
+                          setPassword("")
+                          setHostError("")
+                          store.pushToast("ok", t("wsettings.hostCleared"))
+                        })
+                      }}
+                    >
+                      {t("wsettings.hostClear")}
+                    </button>
+                  </>
+                ) : null}
               </div>
             </form>
           </div>

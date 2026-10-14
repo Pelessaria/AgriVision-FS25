@@ -90,6 +90,25 @@ export interface Workspace {
   mapPreviewPath?: string | null
   dataMode?: "live" | "demo" | "empty"
   statusNote?: string | null
+  hostAccess?: HostAccessInfo | null
+}
+
+export type HostProtocol = "sftp" | "ftps" | "ftp"
+
+export interface HostAccessInfo {
+  configured: boolean
+  protocol: HostProtocol
+  host: string
+  port: number
+  username: string
+  hasPassword: boolean
+  remoteRoot: string | null
+  remoteSavegamePath: string | null
+  remoteModSettingsPath: string | null
+  insecure: boolean
+  status: "unconfigured" | "ok" | "error" | string
+  lastVerifiedAt: string | null
+  lastError: string | null
 }
 
 /** In-game farm (Hof) inside a gameserver workspace. */

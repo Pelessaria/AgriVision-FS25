@@ -1,5 +1,7 @@
 *.log
 .DS_Store
+composer.phar
+composer-setup.php
 .env
 .env.backup
 .env.production

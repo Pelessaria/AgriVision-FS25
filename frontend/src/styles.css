@@ -1332,6 +1332,25 @@ h1.title-with-no { display: flex; }
   align-items: start;
 }
 .settings-col, .settings-card { display: grid; gap: 14px; align-content: start; }
+.field-row {
+  display: grid;
+  grid-template-columns: 1fr 5.5rem;
+  gap: 12px;
+  align-items: start;
+}
+.field-narrow input { width: 100%; }
+.check-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.check-row input {
+  margin-top: 0.2rem;
+  accent-color: var(--accent);
+}
 .settings-grid > .settings-card { align-self: stretch; }
 .settings-card h2, .settings-hero h2 {
   font-size: 1.05rem;

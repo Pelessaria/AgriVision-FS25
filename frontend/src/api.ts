@@ -1,4 +1,4 @@
-import type { AppUser, Farm, Vehicle, Workspace } from "./types"
+import type { AppUser, Farm, HostProtocol, Vehicle, Workspace } from "./types"
 
 export class ApiError extends Error {
   status: number
@@ -140,6 +140,47 @@ export async function apiWorkspaceFarms(
 ): Promise<{ farms: Farm[]; workspace?: Workspace }> {
   const sync = options?.sync ? "?sync=1" : ""
   return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/farms${sync}`)
+}
+
+export type HostAccessPayload = {
+  protocol: HostProtocol
+  host: string
+  port?: number | null
+  username: string
+  password?: string
+  keepPassword?: boolean
+  remoteRoot?: string
+  remoteSavegamePath?: string
+  remoteModSettingsPath?: string
+  insecureAck?: boolean
+  probe?: boolean
+}
+
+export async function apiSaveHostAccess(
+  id: string,
+  payload: HostAccessPayload,
+): Promise<{ ok: boolean; error?: string | null; workspace: Workspace; farms: Farm[] }> {
+  return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/host-access`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  })
+}
+
+export async function apiProbeHostAccess(
+  id: string,
+): Promise<{ ok: boolean; error?: string | null; workspace: Workspace; farms: Farm[] }> {
+  return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/host-access/probe`, {
+    method: "POST",
+    body: "{}",
+  })
+}
+
+export async function apiDeleteHostAccess(
+  id: string,
+): Promise<{ ok: boolean; workspace: Workspace }> {
+  return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/host-access`, {
+    method: "DELETE",
+  })
 }
 
 /** Probe whether the Laravel API is reachable (not just Vite demo). */
