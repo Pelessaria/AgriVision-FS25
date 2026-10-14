@@ -185,30 +185,33 @@ final class FeedSnapshot
     }
 
     /**
+     * JSON feed (FS25) uses lowercase `slots` with `used` + `players[]`.
+     * XML attributes often appear as `numUsed` / `Slot` (or under @attributes).
+     *
      * @param  array<string, mixed>  $slots
-     * @return array{capacity: int|null, numUsed: int|null, usedCount?: int}
+     * @return array{capacity: int|null, numUsed: int|null}
      */
     private static function normalizeSlots(array $slots): array
     {
         $flat = self::flattenAttrs($slots);
         $capacity = self::int($flat['capacity'] ?? null);
-        $numUsed = self::int($flat['numUsed'] ?? $flat['num_used'] ?? null);
+        // Live JSON: "used"; XML-ish JSON: "numUsed"
+        $numUsed = self::int($flat['numUsed'] ?? $flat['num_used'] ?? $flat['used'] ?? null);
 
-        $slotRaw = $flat['Slot'] ?? $flat['slot'] ?? null;
+        $slotRaw = $flat['Slot'] ?? $flat['slot'] ?? $flat['players'] ?? $flat['Players'] ?? null;
         if ($slotRaw !== null) {
             if (isset($slotRaw['isUsed']) || isset($slotRaw['@attributes']) || isset($slotRaw['name'])) {
                 $slotRaw = [$slotRaw];
             }
             if (is_array($slotRaw)) {
+                // Ignore non-list keys if mixed; count numeric entries.
+                $list = array_values(array_filter($slotRaw, 'is_array'));
                 if ($capacity === null) {
-                    $capacity = count($slotRaw);
+                    $capacity = count($list);
                 }
                 if ($numUsed === null) {
                     $used = 0;
-                    foreach ($slotRaw as $slot) {
-                        if (! is_array($slot)) {
-                            continue;
-                        }
+                    foreach ($list as $slot) {
                         $slot = self::flattenAttrs($slot);
                         $flag = $slot['isUsed'] ?? $slot['used'] ?? null;
                         if ($flag === true || $flag === 1 || $flag === '1' || $flag === 'true' || $flag === 'True') {

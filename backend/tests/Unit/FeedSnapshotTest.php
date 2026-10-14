@@ -97,4 +97,33 @@ class FeedSnapshotTest extends TestCase
         $this->assertSame(10, $snapshot->playerCapacity);
         $this->assertSame('1.24.0.0', $snapshot->gameVersion);
     }
+
+    public function test_slots_from_live_json_shape(): void
+    {
+        // Shape observed on FS25 dedicated-server-stats.json (lowercase slots.used + players[]).
+        $stats = [
+            'server' => [
+                'name' => 'Pelle Lokal',
+                'mapName' => 'Schwesing Bahnhof',
+                'version' => '1.24.0.0',
+            ],
+            'slots' => [
+                'capacity' => 12,
+                'used' => 0,
+                'players' => array_fill(0, 12, ['isUsed' => false]),
+            ],
+        ];
+
+        $snapshot = FeedSnapshot::fromRaw(
+            baseUrl: 'http://10.10.2.17:8081',
+            fetchedAtUtc: '2026-10-14T00:00:00Z',
+            statsJson: $stats,
+            careerXml: '',
+            vehiclesXml: '',
+            economyXml: '',
+        );
+
+        $this->assertSame(0, $snapshot->playersOnline);
+        $this->assertSame(12, $snapshot->playerCapacity);
+    }
 }
