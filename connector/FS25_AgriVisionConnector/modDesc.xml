@@ -1,13 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="no" ?>
-<modDesc>
-    <!--
-      descVersion MUST match the installed FS25 build.
-      Read from log.txt / shared/xml/documentation/modDesc.html before packaging.
-      Do not ship a guessed value to production servers.
-    -->
-    <descVersion>90</descVersion>
+<modDesc descVersion="114">
     <author>AgriVision</author>
-    <version>0.1.1.0</version>
+    <version>0.1.1.1</version>
     <title>
         <en>AgriVision Connector</en>
         <de>AgriVision Connector</de>
