@@ -662,6 +662,9 @@ fi
 
 log "Application key"
 "$PHP_BIN" artisan key:generate --force
+if ! grep -qE '^APP_KEY=base64:.+' .env; then
+  die "APP_KEY missing after key:generate. Check .env write permissions."
+fi
 
 log "Writable dirs"
 mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views
