@@ -1333,6 +1333,54 @@ h1.title-with-no { display: flex; }
 .settings-card .lang { width: fit-content; }
 .settings-card .lang button { min-width: 7.5rem; }
 
+.update-status {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  align-items: start;
+  margin: 2px 0 4px;
+  padding: 16px 18px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+}
+.update-status > .icon {
+  width: 1.45rem;
+  height: 1.45rem;
+  margin-top: 1px;
+  flex-shrink: 0;
+}
+.update-status > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.update-status strong {
+  font-size: 1.05rem;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+.update-status span {
+  color: var(--text-muted);
+  font-size: var(--small);
+  line-height: 1.45;
+}
+.update-status-current {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-2));
+}
+.update-status-current > .icon { color: var(--accent); }
+.update-status-current strong { color: var(--accent-2); }
+.update-status-available {
+  border-color: color-mix(in srgb, var(--warning) 48%, var(--line));
+  background: color-mix(in srgb, var(--warning) 12%, var(--surface-2));
+}
+.update-status-available > .icon { color: var(--warning); }
+.update-status-available strong { color: #ffd2bb; }
+.update-status-pending {
+  border-color: var(--line-strong);
+}
+.update-status-pending > .icon { color: var(--text-faint); }
 .update-meta {
   display: grid;
   gap: 10px;
@@ -1356,7 +1404,6 @@ h1.title-with-no { display: flex; }
   text-decoration: none;
 }
 .update-meta-row a:hover { text-decoration: underline; }
-.update-note-warn { color: var(--warning); }
 @media (max-width: 720px) {
   .settings-form-grid { grid-template-columns: 1fr; }
   .profile-avatar-row { grid-template-columns: 1fr; }

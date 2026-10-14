@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
-import { Camera, RefreshCw, ShieldCheck } from "lucide-react"
+import { Camera, CheckCircle2, CircleAlert, LoaderCircle, RefreshCw, ShieldCheck } from "lucide-react"
 import {
   applyUpdate,
   checkForUpdates,
@@ -479,6 +479,52 @@ export function SettingsPage() {
             <p className="hint">{t("settings.updateLead")}</p>
           </div>
 
+          {updateChecking && !updateStatus ? (
+            <div className="update-status update-status-pending" role="status">
+              <LoaderCircle className="icon spin" aria-hidden="true" />
+              <div>
+                <strong>{t("settings.updateChecking")}</strong>
+                <span>{t("settings.updateStatusPendingLead")}</span>
+              </div>
+            </div>
+          ) : null}
+
+          {updateStatus ? (
+            <div
+              className={
+                updateStatus.updateAvailable ? "update-status update-status-available" : "update-status update-status-current"
+              }
+              role="status"
+              aria-live="polite"
+            >
+              {updateStatus.updateAvailable ? (
+                <CircleAlert className="icon" aria-hidden="true" />
+              ) : (
+                <CheckCircle2 className="icon" aria-hidden="true" />
+              )}
+              <div>
+                <strong>
+                  {updateStatus.updateAvailable ? t("settings.updateAvailable") : t("settings.updateCurrentOk")}
+                </strong>
+                <span>
+                  {updateStatus.updateAvailable
+                    ? t("settings.updateAvailableLead", {
+                        sha: formatSha(updateStatus.remoteSha),
+                      })
+                    : t("settings.updateCurrentLead", {
+                        sha: formatSha(updateStatus.installedSha ?? demoInstalledSha),
+                      })}
+                  {" · "}
+                  {updateStatus.source === "api"
+                    ? t("settings.updateSourceApi")
+                    : updateStatus.source === "github"
+                      ? t("settings.updateSourceGithub")
+                      : t("settings.updateSourceDemo")}
+                </span>
+              </div>
+            </div>
+          ) : null}
+
           <div className="update-meta">
             <div className="update-meta-row">
               <span className="faint">{t("settings.updateCurrent")}</span>
@@ -510,19 +556,6 @@ export function SettingsPage() {
             ) : null}
           </div>
 
-          {updateStatus ? (
-            <p className={updateStatus.updateAvailable ? "access-note update-note-warn" : "access-note"}>
-              <RefreshCw className="icon inline-icon" aria-hidden="true" />
-              {updateStatus.updateAvailable ? t("settings.updateAvailable") : t("settings.updateCurrentOk")}
-              {" · "}
-              {updateStatus.source === "api"
-                ? t("settings.updateSourceApi")
-                : updateStatus.source === "github"
-                  ? t("settings.updateSourceGithub")
-                  : t("settings.updateSourceDemo")}
-            </p>
-          ) : null}
-
           {updateStatus?.source !== "api" && !liveMode ? (
             <p className="hint">{t("settings.updateApplyDemo")}</p>
           ) : null}
@@ -540,6 +573,7 @@ export function SettingsPage() {
               disabled={updateChecking || updateApplying}
               onClick={() => void runUpdateCheck()}
             >
+              {updateChecking ? <LoaderCircle className="icon spin" /> : <RefreshCw className="icon" />}
               {updateChecking ? t("settings.updateChecking") : t("settings.updateCheck")}
             </button>
             <button
@@ -567,9 +601,6 @@ export function SettingsPage() {
               {t("settings.updateOpenRepo")}
             </a>
           </div>
-          {updateStatus?.source === "api" && !updateStatus.updateAvailable && !updateChecking ? (
-            <p className="hint">{t("settings.updateApplyDisabledCurrent")}</p>
-          ) : null}
         </section>
       ) : null}
 
