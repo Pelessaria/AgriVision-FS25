@@ -12,7 +12,7 @@
 
 AgriVisionConnector = {}
 AgriVisionConnector.MOD_NAME = "FS25_AgriVisionConnector"
-AgriVisionConnector.VERSION = "0.1.2.0"
+AgriVisionConnector.VERSION = "0.1.2.1"
 AgriVisionConnector.SCHEMA = "1"
 AgriVisionConnector.TICK_MS = 5000
 AgriVisionConnector.FULL_VEHICLE_EVERY_MS = 60000
@@ -377,12 +377,17 @@ function AgriVisionConnector:writeIconsManifestStartup()
                         iconSrc = modDir .. iconSrc
                     end
 
+                    -- Copy PNG/JPG/DDS; dashboard converts DDS → PNG when serving.
                     local ext = "png"
-                    if iconSrc ~= nil and string.find(string.lower(iconSrc), "%.dds") then
-                        -- Browsers cannot render DDS; skip until backend conversion exists.
-                        iconSrc = nil
-                    elseif iconSrc ~= nil and string.find(string.lower(iconSrc), "%.jpe?g") then
-                        ext = "jpg"
+                    if iconSrc ~= nil then
+                        local lower = string.lower(iconSrc)
+                        if string.find(lower, "%.dds") then
+                            ext = "dds"
+                        elseif string.find(lower, "%.jpe?g") then
+                            ext = "jpg"
+                        elseif string.find(lower, "%.png") then
+                            ext = "png"
+                        end
                     end
 
                     local copied = false

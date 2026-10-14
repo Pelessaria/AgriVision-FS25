@@ -480,7 +480,7 @@ export const de = {
     connectorUpToDate: "Connector-Paket ist aktuell ({{package}}).",
     connectorNoRunningVersion: "Server-Version unbekannt — Paket {{package}}. Nach Deploy Server neu starten.",
     connectorModSettingsMissing:
-      "Hinweis: Unter modSettings fehlt noch der Connector-Ordner. Nach Server-Neustart mit aktiver Mod erscheint er automatisch (hello.xml).",
+      "Mod läuft nicht (kein modSettings-Ordner). Neuestes Paket per FTP deployen, in der Modliste aktivieren und Dedicated Server neu starten. Im Log darf kein Fehler zu AgriVisionConnector.lua stehen.",
     disableTitle: "Instanz deaktivieren",
     disableBody: "Der Workspace bleibt erhalten und nimmt in diesem Prototyp keine neuen Demo-Updates an.",
     disable: "Deaktivieren",

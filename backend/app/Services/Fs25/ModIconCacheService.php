@@ -74,8 +74,8 @@ final class ModIconCacheService
                 continue;
             }
 
-            // Skip large archives — full ZIP pull over FTP is too slow for the UI path.
-            if (strlen($bytes) > 12 * 1024 * 1024) {
+            // Single-key icon fetch: allow larger packs (cached after first hit).
+            if (strlen($bytes) > 48 * 1024 * 1024) {
                 continue;
             }
 
@@ -146,6 +146,9 @@ final class ModIconCacheService
                 'icon.png',
                 'icon.PNG',
                 'icon.jpg',
+                'icon.dds',
+                'icon.DDS',
+                'store.dds',
             ]));
 
             $picked = null;
@@ -154,13 +157,12 @@ final class ModIconCacheService
                 if ($candidate === null || $candidate === '') {
                     continue;
                 }
-                // Browsers cannot render DDS; skip until we have a converter.
-                if (preg_match('/\.dds$/i', $candidate)) {
-                    continue;
-                }
                 $data = $zip->getFromName($candidate);
                 if ($data === false) {
-                    // Case-insensitive search
+                    $data = $zip->getFromName(str_replace('\\', '/', $candidate));
+                }
+                if ($data === false) {
+                    // Case-insensitive basename search
                     for ($i = 0; $i < $zip->numFiles; $i++) {
                         $name = str_replace('\\', '/', (string) $zip->getNameIndex($i));
                         if (strcasecmp(basename($name), basename($candidate)) === 0) {
@@ -172,9 +174,6 @@ final class ModIconCacheService
                 if (is_string($data) && strlen($data) > 32) {
                     $picked = $data;
                     $ext = strtolower(pathinfo($candidate, PATHINFO_EXTENSION) ?: 'png');
-                    if (! in_array($ext, ['png', 'jpg', 'jpeg', 'webp'], true)) {
-                        $ext = 'png';
-                    }
                     break;
                 }
             }
@@ -184,6 +183,19 @@ final class ModIconCacheService
                 return false;
             }
 
+            if ($ext === 'dds') {
+                $png = DdsToPng::convert($picked);
+                if ($png === null) {
+                    return false;
+                }
+                File::put($dir.'/'.$safeKey.'.png', $png);
+
+                return true;
+            }
+
+            if (! in_array($ext, ['png', 'jpg', 'jpeg', 'webp'], true)) {
+                $ext = 'png';
+            }
             File::put($dir.'/'.$safeKey.'.'.$ext, $picked);
 
             return true;

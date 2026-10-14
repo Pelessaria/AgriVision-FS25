@@ -473,6 +473,7 @@ h1, h2, h3, p { margin: 0; }
 }
 .equip-icon img { width: 100%; height: 100%; object-fit: cover; }
 .equip-icon .icon { width: 16px; height: 16px; }
+.equip-icon .icon-fallback.is-hidden { display: none; }
 .vehicle-card .equip-icon { margin-bottom: 8px; }
 .ws-dash { display: grid; gap: 16px; }
 .ws-feed-vehicles { margin: 0; }

@@ -173,7 +173,20 @@ export function VehiclesPage() {
                     >
                       <td>
                         <span className="equip-icon" aria-hidden="true">
-                          {vehicle.iconUrl ? <img src={vehicle.iconUrl} alt="" /> : <Tractor className="icon" />}
+                          {vehicle.iconUrl ? (
+                            <img
+                              src={vehicle.iconUrl}
+                              alt=""
+                              onError={(event) => {
+                                const wrap = event.currentTarget.parentElement
+                                event.currentTarget.remove()
+                                wrap?.querySelector(".icon-fallback")?.classList.remove("is-hidden")
+                              }}
+                            />
+                          ) : null}
+                          <Tractor
+                            className={`icon icon-fallback${vehicle.iconUrl ? " is-hidden" : ""}`}
+                          />
                         </span>
                       </td>
                       <td>{vehicle.name}</td>
@@ -196,7 +209,18 @@ export function VehiclesPage() {
                 onClick={() => navigate(`/w/${id}/equipment/${vehicle.id}`)}
               >
                 <span className="equip-icon" aria-hidden="true">
-                  {vehicle.iconUrl ? <img src={vehicle.iconUrl} alt="" /> : <Tractor className="icon" />}
+                  {vehicle.iconUrl ? (
+                    <img
+                      src={vehicle.iconUrl}
+                      alt=""
+                      onError={(event) => {
+                        const wrap = event.currentTarget.parentElement
+                        event.currentTarget.remove()
+                        wrap?.querySelector(".icon-fallback")?.classList.remove("is-hidden")
+                      }}
+                    />
+                  ) : null}
+                  <Tractor className={`icon icon-fallback${vehicle.iconUrl ? " is-hidden" : ""}`} />
                 </span>
                 <strong>{vehicle.name}</strong>
                 <span>{t(categoryLabelKey(vehicle.category))}</span>

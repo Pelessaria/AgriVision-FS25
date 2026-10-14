@@ -236,7 +236,22 @@ class WorkspaceController extends Controller
             return response('Icon not found.', 404)->header('Content-Type', 'text/plain; charset=UTF-8');
         }
 
-        $mime = match (strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        if ($ext === 'dds') {
+            $png = \App\Services\Fs25\DdsToPng::convert((string) file_get_contents($path));
+            if ($png === null) {
+                return response('Icon convert failed.', 404)->header('Content-Type', 'text/plain; charset=UTF-8');
+            }
+            $converted = preg_replace('/\.dds$/i', '.png', $path) ?? ($path.'.png');
+            @file_put_contents($converted, $png);
+
+            return response($png, 200, [
+                'Content-Type' => 'image/png',
+                'Cache-Control' => 'private, max-age=86400',
+            ]);
+        }
+
+        $mime = match ($ext) {
             'jpg', 'jpeg' => 'image/jpeg',
             'webp' => 'image/webp',
             'png' => 'image/png',

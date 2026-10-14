@@ -482,7 +482,7 @@ export const en = {
     connectorUpToDate: "Connector package is current ({{package}}).",
     connectorNoRunningVersion: "Server version unknown — package {{package}}. Restart the server after deploy.",
     connectorModSettingsMissing:
-      "Note: the connector folder is not under modSettings yet. After a restart with the mod active it appears automatically (hello.xml).",
+      "Mod is not running (no modSettings folder). Deploy the latest package via FTP, enable it in the mod list, and restart the dedicated server. The log must not show an AgriVisionConnector.lua error.",
     disableTitle: "Disable instance",
     disableBody: "The workspace stays in place and accepts no further demo updates in this prototype.",
     disable: "Disable",
