@@ -1,4 +1,4 @@
-import type { AppUser, Farm, HostProtocol, Vehicle, Workspace } from "./types"
+import type { AppUser, Farm, HostProtocol, Vehicle, Workspace, WorkspaceSavegame } from "./types"
 
 export class ApiError extends Error {
   status: number
@@ -177,7 +177,13 @@ export type HostAccessPayload = {
 export async function apiSaveHostAccess(
   id: string,
   payload: HostAccessPayload,
-): Promise<{ ok: boolean; error?: string | null; workspace: Workspace; farms: Farm[] }> {
+): Promise<{
+  ok: boolean
+  error?: string | null
+  workspace: Workspace
+  farms: Farm[]
+  savegames: WorkspaceSavegame[]
+}> {
   return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/host-access`, {
     method: "PUT",
     body: JSON.stringify(payload),
@@ -186,10 +192,32 @@ export async function apiSaveHostAccess(
 
 export async function apiProbeHostAccess(
   id: string,
-): Promise<{ ok: boolean; error?: string | null; workspace: Workspace; farms: Farm[] }> {
+): Promise<{
+  ok: boolean
+  error?: string | null
+  workspace: Workspace
+  farms: Farm[]
+  savegames: WorkspaceSavegame[]
+}> {
   return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/host-access/probe`, {
     method: "POST",
     body: "{}",
+  })
+}
+
+export async function apiSelectSavegame(
+  workspaceId: string,
+  savegameId: number | string,
+): Promise<{
+  ok: boolean
+  error?: string | null
+  workspace: Workspace
+  farms: Farm[]
+  savegames: WorkspaceSavegame[]
+}> {
+  return apiFetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/savegames/select`, {
+    method: "POST",
+    body: JSON.stringify({ savegameId }),
   })
 }
 

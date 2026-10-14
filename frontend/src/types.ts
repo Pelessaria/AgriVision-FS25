@@ -91,6 +91,23 @@ export interface Workspace {
   dataMode?: "live" | "demo" | "empty"
   statusNote?: string | null
   hostAccess?: HostAccessInfo | null
+  savegames?: WorkspaceSavegame[]
+  activeSavegameId?: number | null
+}
+
+export type SavegameStatus = "ready" | "no_farms" | "error" | "unknown" | string
+
+export interface WorkspaceSavegame {
+  id: number
+  slotKey: string
+  path: string
+  name: string | null
+  status: SavegameStatus
+  statusNote: string | null
+  hasFarmsXml: boolean
+  hasCareerXml: boolean
+  active: boolean
+  lastProbedAt: string | null
 }
 
 export type HostProtocol = "sftp" | "ftps" | "ftp"

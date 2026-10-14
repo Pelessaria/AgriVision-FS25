@@ -491,6 +491,19 @@ export const de = {
       "FTPS nutzt AUTH TLS auf Port 21 (üblich). Port 990 = Implicit FTPS. Selbstsignierte Zertifikate werden akzeptiert.",
     hostErrorCopy: "Fehlertext kopieren",
     hostErrorCopied: "Fehlertext kopiert — für Support-Ticket nutzen.",
+    savegamesTitle: "Savegames",
+    savegamesLead:
+      "Jeder Savegame-Ordner behält eigene Hofdaten. Fehlt farms.xml, ist das nur ein Hinweis — du kannst trotzdem wechseln.",
+    savegameSelect: "Aktivieren",
+    savegameActive: "Aktiv",
+    savegameSwitched: "Savegame gewechselt — Daten bleiben je Slot erhalten.",
+    savegameSwitchFail: "Savegame konnte nicht gewechselt werden.",
+    savegameStatus: {
+      ready: "Bereit",
+      no_farms: "Ohne farms.xml",
+      error: "Fehler",
+      unknown: "Unbekannt",
+    },
   },
   permission: {
     title: "Keine Berechtigung",

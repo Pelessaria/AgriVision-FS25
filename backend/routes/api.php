@@ -27,6 +27,7 @@ Route::middleware('auth:web')->group(function () {
     Route::put('/workspaces/{workspace}/host-access', [WorkspaceController::class, 'updateHostAccess']);
     Route::post('/workspaces/{workspace}/host-access/probe', [WorkspaceController::class, 'probeHostAccess']);
     Route::delete('/workspaces/{workspace}/host-access', [WorkspaceController::class, 'deleteHostAccess']);
+    Route::post('/workspaces/{workspace}/savegames/select', [WorkspaceController::class, 'selectSavegame']);
 
     Route::get('/system/update', [SystemUpdateController::class, 'status']);
     Route::post('/system/update', [SystemUpdateController::class, 'apply']);

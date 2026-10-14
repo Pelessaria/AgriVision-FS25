@@ -144,17 +144,24 @@ final class HostFileClient
     }
 
     /**
-     * @return array{savegame: string|null, modSettings: string|null, candidates: list<string>}
+     * @return array{
+     *   savegame: string|null,
+     *   savegames: list<array{slotKey: string, path: string}>,
+     *   modSettings: string|null,
+     *   candidates: list<string>
+     * }
      */
     public function probePaths(?string $hintSavegame = null, ?string $hintModSettings = null): array
     {
-        $savegame = null;
         $modSettings = null;
         $candidates = [];
         $listErrors = [];
+        /** @var array<string, string> $savegames path by slot key */
+        $savegames = [];
 
         if ($hintSavegame && $this->looksLikeSavegameDir($hintSavegame)) {
-            $savegame = $this->normalizePath($hintSavegame);
+            $slot = $this->slotKeyFromPath($hintSavegame);
+            $savegames[$slot] = $this->normalizePath($hintSavegame);
         }
         if ($hintModSettings && $this->directoryLooksPresent($hintModSettings)) {
             $modSettings = $this->normalizePath($hintModSettings);
@@ -169,30 +176,44 @@ final class HostFileClient
                 if (in_array($base, ['documents', 'my games', 'farming simulator 25', 'farmingsimulator25', 'fs25'], true)) {
                     $roots[] = $dir;
                 }
+                $this->collectSavegameCandidate($dir, $savegames);
+                if ($base === 'modsettings') {
+                    $modSettings ??= $this->normalizePath($dir);
+                }
             }
         } catch (Throwable $e) {
             $listErrors[] = HostConnectionError::format($e);
         }
 
         foreach ($roots as $root) {
-            if ($savegame === null) {
-                $savegame = $this->findNamedDir($root, ['savegame', 'savegame1', 'savegame2', 'savegame3']);
-            }
             if ($modSettings === null) {
-                $modSettings = $this->findNamedDir($root, ['modsettings', 'modSettings']);
-            }
-            if ($savegame !== null && $modSettings !== null) {
-                break;
+                $found = $this->findNamedDir($root, ['modsettings', 'modSettings']);
+                if ($found) {
+                    $modSettings = $found;
+                }
             }
 
             try {
                 foreach ($this->listDirectories($root) as $child) {
                     $candidates[] = $child;
-                    if ($savegame === null) {
-                        $savegame = $this->findNamedDir($child, ['savegame', 'savegame1', 'savegame2', 'savegame3']);
+                    $this->collectSavegameCandidate($child, $savegames);
+                    $base = strtolower(basename(str_replace('\\', '/', $child)));
+                    if ($modSettings === null && $base === 'modsettings') {
+                        $modSettings = $this->normalizePath($child);
                     }
-                    if ($modSettings === null) {
-                        $modSettings = $this->findNamedDir($child, ['modsettings', 'modSettings']);
+
+                    // One more level (My Games / FarmingSimulator25)
+                    try {
+                        foreach ($this->listDirectories($child) as $grand) {
+                            $candidates[] = $grand;
+                            $this->collectSavegameCandidate($grand, $savegames);
+                            $gbase = strtolower(basename(str_replace('\\', '/', $grand)));
+                            if ($modSettings === null && $gbase === 'modsettings') {
+                                $modSettings = $this->normalizePath($grand);
+                            }
+                        }
+                    } catch (Throwable) {
+                        // ignore deeper listing failures
                     }
                 }
             } catch (Throwable $e) {
@@ -200,18 +221,50 @@ final class HostFileClient
             }
         }
 
-        if ($savegame === null && $modSettings === null && $listErrors !== []) {
+        if ($savegames === [] && $modSettings === null && $listErrors !== []) {
             throw new RuntimeException(
                 'Pfad-Suche fehlgeschlagen: '.$listErrors[0]
                 .' — optional Savegame-Pfad manuell setzen.'
             );
         }
 
+        ksort($savegames, SORT_NATURAL | SORT_FLAG_CASE);
+        $list = [];
+        foreach ($savegames as $slot => $path) {
+            $list[] = ['slotKey' => $slot, 'path' => $path];
+        }
+
+        $primary = $list[0]['path'] ?? null;
+
         return [
-            'savegame' => $savegame,
+            'savegame' => $primary,
+            'savegames' => $list,
             'modSettings' => $modSettings,
             'candidates' => array_values(array_unique($candidates)),
         ];
+    }
+
+    /**
+     * @param  array<string, string>  $savegames
+     */
+    private function collectSavegameCandidate(string $dir, array &$savegames): void
+    {
+        $base = basename(str_replace('\\', '/', $dir));
+        if (! preg_match('/^savegame\d*$/i', $base)) {
+            return;
+        }
+        if (! $this->looksLikeSavegameDir($dir)) {
+            return;
+        }
+        $slot = strtolower($base);
+        $savegames[$slot] = $this->normalizePath($dir);
+    }
+
+    private function slotKeyFromPath(string $path): string
+    {
+        $base = strtolower(basename(str_replace('\\', '/', $this->normalizePath($path))));
+
+        return preg_match('/^savegame\d*$/', $base) ? $base : $base;
     }
 
     private function sftp(): Filesystem

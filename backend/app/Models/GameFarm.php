@@ -9,6 +9,7 @@ class GameFarm extends Model
 {
     protected $fillable = [
         'workspace_id',
+        'workspace_savegame_id',
         'game_farm_id',
         'display_name',
         'money',
@@ -31,5 +32,10 @@ class GameFarm extends Model
     public function workspace(): BelongsTo
     {
         return $this->belongsTo(Workspace::class);
+    }
+
+    public function savegame(): BelongsTo
+    {
+        return $this->belongsTo(WorkspaceSavegame::class, 'workspace_savegame_id');
     }
 }

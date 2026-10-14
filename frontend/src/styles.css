@@ -1372,6 +1372,62 @@ h1.title-with-no { display: flex; }
   padding: 0.35rem 0.7rem;
   font-size: 0.82rem;
 }
+.savegame-list {
+  display: grid;
+  gap: 10px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+.savegame-list h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.savegame-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.savegame-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 92%, #000);
+}
+.savegame-row.active {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+}
+.savegame-row-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.savegame-row-main strong {
+  font-size: 0.92rem;
+}
+.savegame-status {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+.savegame-status.status-ready { color: var(--accent); }
+.savegame-status.status-no_farms { color: #d4a017; }
+.savegame-status.status-error { color: #ff6d88; }
+.savegame-note {
+  font-size: 0.78rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+.savegame-active-label {
+  font-size: 0.78rem;
+  color: var(--accent);
+  white-space: nowrap;
+}
 .settings-grid > .settings-card { align-self: stretch; }
 .settings-card h2, .settings-hero h2 {
   font-size: 1.05rem;

@@ -15,6 +15,7 @@ import {
   apiMe,
   apiProbeHostAccess,
   apiSaveHostAccess,
+  apiSelectSavegame,
   apiSyncWorkspace,
   apiUpdateWorkspace,
   apiWorkspaces,
@@ -98,6 +99,10 @@ interface Store {
     payload: HostAccessPayload,
   ) => Promise<{ ok: boolean; error?: string; workspace?: Workspace }>
   probeHostAccess: (id: string) => Promise<{ ok: boolean; error?: string; workspace?: Workspace }>
+  selectSavegame: (
+    workspaceId: string,
+    savegameId: number | string,
+  ) => Promise<{ ok: boolean; error?: string; workspace?: Workspace }>
   clearHostAccess: (id: string) => Promise<void>
   setDisabled: (id: string, disabled: boolean) => Promise<void>
   testConnection: (id: string) => Promise<"ok" | "offline" | "unpaired" | "disabled">
@@ -595,6 +600,28 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return {
           ok: false,
           error: error instanceof Error ? error.message : "Dateizugang prüfen fehlgeschlagen",
+        }
+      }
+    },
+    selectSavegame: async (workspaceId, savegameId) => {
+      if (!liveMode) return { ok: false, error: "Nur im Live-Modus" }
+      try {
+        const result = await apiSelectSavegame(workspaceId, savegameId)
+        setWorkspaces((current) =>
+          current.map((item) => (item.id === workspaceId ? result.workspace : item)),
+        )
+        if (result.farms) {
+          setFarms((current) => [
+            ...current.filter((farm) => farm.workspaceId !== workspaceId),
+            ...result.farms,
+          ])
+        }
+        if (!result.ok) return { ok: false, error: result.error ?? undefined, workspace: result.workspace }
+        return { ok: true, workspace: result.workspace }
+      } catch (error) {
+        return {
+          ok: false,
+          error: error instanceof Error ? error.message : "Savegame wechseln fehlgeschlagen",
         }
       }
     },

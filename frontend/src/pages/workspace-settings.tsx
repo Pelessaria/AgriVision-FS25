@@ -27,6 +27,7 @@ export function WorkspaceSettingsPage() {
   const [insecureAck, setInsecureAck] = useState(false)
   const [hostError, setHostError] = useState("")
   const [hostBusy, setHostBusy] = useState(false)
+  const [savegameBusy, setSavegameBusy] = useState<number | null>(null)
   const [syncedId, setSyncedId] = useState(workspace?.id)
   if (workspace && syncedId !== workspace.id) {
     setSyncedId(workspace.id)
@@ -445,6 +446,52 @@ export function WorkspaceSettingsPage() {
                   </>
                 ) : null}
               </div>
+
+              {(workspace.savegames?.length ?? 0) > 0 ? (
+                <div className="savegame-list">
+                  <h3>{t("wsettings.savegamesTitle")}</h3>
+                  <p className="hint">{t("wsettings.savegamesLead")}</p>
+                  <ul className="savegame-rows">
+                    {workspace.savegames!.map((sg) => (
+                      <li key={sg.id} className={sg.active ? "savegame-row active" : "savegame-row"}>
+                        <div className="savegame-row-main">
+                          <strong>{sg.name || sg.slotKey}</strong>
+                          <span className="faint">{sg.slotKey}</span>
+                          <span className={`savegame-status status-${sg.status}`}>
+                            {t(`wsettings.savegameStatus.${sg.status}`, {
+                              defaultValue: sg.statusNote || sg.status,
+                            })}
+                          </span>
+                          {sg.statusNote ? <span className="savegame-note">{sg.statusNote}</span> : null}
+                        </div>
+                        {sg.active ? (
+                          <span className="savegame-active-label">{t("wsettings.savegameActive")}</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-small"
+                            disabled={savegameBusy !== null}
+                            onClick={() => {
+                              setSavegameBusy(sg.id)
+                              void store.selectSavegame(ws.id, sg.id).then((result) => {
+                                setSavegameBusy(null)
+                                if (!result.ok) {
+                                  store.pushToast("warn", result.error ?? t("wsettings.savegameSwitchFail"))
+                                  return
+                                }
+                                store.pushToast("ok", t("wsettings.savegameSwitched"))
+                              })
+                            }}
+                          >
+                            {savegameBusy === sg.id ? <LoaderCircle className="icon spin" /> : null}
+                            {t("wsettings.savegameSelect")}
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
             </form>
           </div>
           <div className="settings-col">

@@ -17,7 +17,7 @@ class WorkspaceController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $rows = Workspace::query()->with('hostAccess')->orderBy('number')->orderBy('id')->get();
+        $rows = Workspace::query()->with(['hostAccess', 'savegames'])->orderBy('number')->orderBy('id')->get();
 
         return response()->json([
             'workspaces' => $rows->map(fn (Workspace $w) => $this->serialize($w))->values(),
@@ -206,6 +206,7 @@ class WorkspaceController extends Controller
         }
 
         $farms = [];
+        $savegames = [];
         $ok = true;
         $error = null;
         if ($request->boolean('probe', true)) {
@@ -213,15 +214,17 @@ class WorkspaceController extends Controller
             $ok = $result['ok'];
             $error = $result['error'];
             $farms = $result['farms'];
+            $savegames = $result['savegames'];
         }
 
-        $row->load('hostAccess');
+        $row->load(['hostAccess', 'savegames']);
 
         return response()->json([
             'ok' => $ok,
             'error' => $error,
             'workspace' => $this->serialize($row),
             'farms' => $farms,
+            'savegames' => $savegames !== [] ? $savegames : $hosts->serializeSavegames($row),
         ]);
     }
 
@@ -229,13 +232,32 @@ class WorkspaceController extends Controller
     {
         $row = $this->findWorkspace($workspace);
         $result = $hosts->probeAndSyncFarms($row);
-        $row->load('hostAccess');
+        $row->load(['hostAccess', 'savegames']);
 
         return response()->json([
             'ok' => $result['ok'],
             'error' => $result['error'],
             'workspace' => $this->serialize($row),
             'farms' => $result['farms'],
+            'savegames' => $result['savegames'],
+        ]);
+    }
+
+    public function selectSavegame(Request $request, string $workspace, HostAccessService $hosts): JsonResponse
+    {
+        $row = $this->findWorkspace($workspace);
+        $data = $request->validate([
+            'savegameId' => ['required'],
+        ]);
+        $result = $hosts->selectSavegame($row, $data['savegameId']);
+        $row->load(['hostAccess', 'savegames']);
+
+        return response()->json([
+            'ok' => $result['ok'],
+            'error' => $result['error'],
+            'workspace' => $this->serialize($row),
+            'farms' => $result['farms'],
+            'savegames' => $result['savegames'],
         ]);
     }
 
@@ -254,7 +276,7 @@ class WorkspaceController extends Controller
     private function findWorkspace(string $key): Workspace
     {
         $row = Workspace::query()
-            ->with('hostAccess')
+            ->with(['hostAccess', 'savegames'])
             ->where(function ($query) use ($key) {
                 $query->where('public_id', $key)->orWhere('id', $key);
             })
@@ -287,6 +309,7 @@ class WorkspaceController extends Controller
         $online = $w->link_state === 'online';
         $hosts ??= app(HostAccessService::class);
         $hostAccess = $hosts->serialize($w->hostAccess);
+        $savegames = $hosts->serializeSavegames($w);
 
         return [
             'id' => $w->public_id,
@@ -313,6 +336,8 @@ class WorkspaceController extends Controller
             'dataMode' => $w->data_mode,
             'statusNote' => $w->status_note,
             'hostAccess' => $hostAccess,
+            'savegames' => $savegames,
+            'activeSavegameId' => collect($savegames)->firstWhere('active')['id'] ?? null,
         ];
     }
 

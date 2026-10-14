@@ -78,4 +78,14 @@ class Workspace extends Model
     {
         return $this->hasMany(GameFarm::class);
     }
+
+    public function savegames(): HasMany
+    {
+        return $this->hasMany(WorkspaceSavegame::class);
+    }
+
+    public function activeSavegame(): ?WorkspaceSavegame
+    {
+        return $this->savegames()->where('is_active', true)->first();
+    }
 }

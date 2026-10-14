@@ -4,6 +4,7 @@ namespace App\Services\Fs25;
 
 use App\Models\GameFarm;
 use App\Models\Workspace;
+use App\Models\WorkspaceSavegame;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
@@ -242,10 +243,16 @@ final class WorkspaceFeedService
             static fn (mixed $id): bool => is_int($id) && $id > 0
         )));
 
+        $activeSavegameId = WorkspaceSavegame::query()
+            ->where('workspace_id', $workspace->id)
+            ->where('is_active', true)
+            ->value('id');
+
         foreach ($ids as $gameFarmId) {
             GameFarm::query()->firstOrCreate(
                 [
                     'workspace_id' => $workspace->id,
+                    'workspace_savegame_id' => $activeSavegameId,
                     'game_farm_id' => $gameFarmId,
                 ],
                 [
@@ -262,6 +269,7 @@ final class WorkspaceFeedService
         // Drop auto-stubs that vanished; keep rows that already have a real name (FTP/mod).
         GameFarm::query()
             ->where('workspace_id', $workspace->id)
+            ->where('workspace_savegame_id', $activeSavegameId)
             ->whereNull('display_name')
             ->whereNotIn('game_farm_id', $ids)
             ->delete();
