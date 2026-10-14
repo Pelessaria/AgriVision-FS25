@@ -150,8 +150,18 @@ class WorkspaceController extends Controller
             'fetchedAt' => $result['fetchedAt'],
             'vehicles' => $result['vehicles'],
             'farms' => $result['farms'],
-            'iconSync' => $result['iconSync'] ?? null,
             'workspace' => $this->serialize($row->fresh()),
+        ]);
+    }
+
+    public function syncConnectorIcons(string $workspace, ConnectorSnapshotService $connector): JsonResponse
+    {
+        $row = $this->findWorkspace($workspace);
+        $result = $connector->syncStoreIconsIfDue($row);
+
+        return response()->json([
+            'ok' => $result['skipped'] === null || $result['downloaded'] > 0,
+            'iconSync' => $result,
         ]);
     }
 

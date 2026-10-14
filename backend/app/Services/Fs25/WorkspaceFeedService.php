@@ -141,7 +141,7 @@ final class WorkspaceFeedService
     /**
      * Live vehicles from stats JSON + farm stub discovery from savegame.
      *
-     * @return array{ok: bool, error: string|null, fetchedAt: string|null, vehicles: list<array<string, mixed>>, farms: list<array<string, mixed>>, iconSync?: array{downloaded: int, skipped: string|null, pending: int}}
+     * @return array{ok: bool, error: string|null, fetchedAt: string|null, vehicles: list<array<string, mixed>>, farms: list<array<string, mixed>>}
      */
     public function fetchVehicles(Workspace $workspace): array
     {
@@ -190,14 +190,8 @@ final class WorkspaceFeedService
                 // Host connector files are optional enrichment.
             }
 
-            // Frequent incremental store-icon pull (missing only; skips cached).
-            $iconSync = ['downloaded' => 0, 'skipped' => 'not_run', 'pending' => 0];
-            try {
-                $iconSync = $connectorService->syncStoreIconsIfDue($workspace);
-            } catch (Throwable $e) {
-                $iconSync = ['downloaded' => 0, 'skipped' => 'error', 'pending' => 0];
-                report($e);
-            }
+            // Icon FTP runs on a dedicated endpoint so this request stays short
+            // (vehicles_full + feed only). Otherwise shared hosts abort before DDS pulls.
 
             $metaVehicles = ConnectorSnapshotService::mergeMeta($connector['vehicles'], $saveVehicles);
 
@@ -247,7 +241,6 @@ final class WorkspaceFeedService
                 'fetchedAt' => $snapshot->fetchedAtUtc,
                 'vehicles' => $vehicles,
                 'farms' => $this->serializeFarms($workspace),
-                'iconSync' => $iconSync,
             ];
         } catch (Throwable $e) {
             $workspace->link_state = 'offline';

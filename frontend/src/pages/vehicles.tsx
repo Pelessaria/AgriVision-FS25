@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { Tractor } from "lucide-react"
-import { apiWorkspaceVehicles } from "../api"
+import { apiWorkspaceSyncIcons, apiWorkspaceVehicles } from "../api"
 import { EmptyState, MissingValue, MissingWorkspace, PermissionBlock, useTimeLabel } from "../components/ui"
 import { farmDisplayName } from "../farm-label"
 import { useWorkspaceRoute } from "../use-workspace"
@@ -53,34 +53,64 @@ export function VehiclesPage() {
     if (!workspace || !liveMode || !allowed || !equipmentAccess) return
     let cancelled = false
     let pollTimer: ReturnType<typeof setTimeout> | undefined
-    let passes = 0
 
-    const load = async (showSpinner: boolean) => {
+    const refreshVehicles = async (showSpinner: boolean) => {
       if (showSpinner) setLoading(true)
       try {
         const result = await apiWorkspaceVehicles(workspace.id)
-        if (cancelled) return
+        if (cancelled) return result
         replaceWorkspaceVehicles(workspace.id, result.vehicles)
         if (result.farms) replaceWorkspaceFarms(workspace.id, result.farms)
         if (result.workspace) upsertWorkspace(result.workspace)
-        const pending =
-          typeof result.iconSync?.pending === "number" ? result.iconSync.pending : 0
-        const missingIcons = result.vehicles.some((vehicle) => !vehicle.iconUrl)
-        // Incremental FTP pulls a batch per request — refresh while icons are still missing.
-        if ((pending > 0 || missingIcons) && passes < 12) {
-          passes += 1
-          pollTimer = setTimeout(() => {
-            void load(false)
-          }, 35_000)
-        }
+        return result
       } catch {
-        /* keep previous */
+        return null
       } finally {
         if (!cancelled && showSpinner) setLoading(false)
       }
     }
 
-    void load(true)
+    const pullIcons = async () => {
+      let passes = 0
+      while (!cancelled && passes < 16) {
+        try {
+          const sync = await apiWorkspaceSyncIcons(workspace.id)
+          if (cancelled) return
+          const pending = sync.iconSync?.pending ?? 0
+          const downloaded = sync.iconSync?.downloaded ?? 0
+          const errors = sync.iconSync?.errors ?? 0
+          if (downloaded > 0) {
+            await refreshVehicles(false)
+          }
+          if (sync.iconSync?.skipped === "throttled") {
+            pollTimer = setTimeout(() => {
+              void pullIcons()
+            }, 6_000)
+            return
+          }
+          if (pending <= 0) return
+          // All attempts in this batch failed — back off instead of spinning.
+          if (downloaded === 0 && errors > 0) {
+            pollTimer = setTimeout(() => {
+              void pullIcons()
+            }, 15_000)
+            return
+          }
+          passes += 1
+        } catch {
+          return
+        }
+      }
+    }
+
+    void (async () => {
+      const result = await refreshVehicles(true)
+      if (cancelled || !result) return
+      if (result.vehicles.some((vehicle) => !vehicle.iconUrl)) {
+        void pullIcons()
+      }
+    })()
+
     return () => {
       cancelled = true
       if (pollTimer) clearTimeout(pollTimer)
