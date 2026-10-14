@@ -1428,14 +1428,29 @@ h1.title-with-no { display: flex; }
   color: var(--accent);
   white-space: nowrap;
 }
+.instance-version,
 .host-savegame-echo {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px 10px;
+  gap: 8px 18px;
+  margin: 0;
 }
+.instance-version-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.instance-version span,
+.instance-version-item span,
 .host-savegame-echo span {
   color: var(--muted);
+}
+.instance-version strong,
+.instance-version-item strong,
+.host-savegame-echo strong {
+  font-weight: 600;
+  color: var(--text);
 }
 .update-log-panel {
   display: grid;

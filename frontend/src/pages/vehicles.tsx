@@ -198,6 +198,14 @@ export function VehiclesPage() {
                 <strong>{vehicle.name}</strong>
                 <span>{t(categoryLabelKey(vehicle.category))}</span>
                 <span className="faint">
+                  {(() => {
+                    const linked = farmByGameId(id, vehicle.farmId)
+                    if (linked) return farmDisplayName(linked, t)
+                    if (vehicle.farmId === null) return t("unavailable")
+                    return t("vehicles.farmId", { id: vehicle.farmId })
+                  })()}
+                </span>
+                <span className="faint">
                   <MissingValue text={positionOf(vehicle)} />
                 </span>
                 <span className="faint">{stamp(vehicle.observedAt, t("unavailable"))}</span>

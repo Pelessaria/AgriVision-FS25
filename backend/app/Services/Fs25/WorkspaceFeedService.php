@@ -172,28 +172,34 @@ final class WorkspaceFeedService
             $snapshot = $client->fetchLightSnapshot();
             $this->sync->apply($workspace, $snapshot);
 
+            $saveVehicles = [];
             try {
                 $vehiclesXml = $client->fetchSavegame('vehicles');
                 $this->syncFarmStubs($workspace, self::farmIdsFromVehiclesXml($vehiclesXml));
+                $saveVehicles = VehiclesXmlParser::parse($vehiclesXml);
             } catch (Throwable) {
-                // Positions still useful without farm stubs.
+                // Positions still useful without farm stubs / matching.
             }
 
+            $enriched = VehicleFarmMatcher::enrich($snapshot->vehicles, $saveVehicles);
+
             $vehicles = [];
-            foreach ($snapshot->vehicles as $index => $vehicle) {
+            foreach ($enriched as $index => $vehicle) {
+                $unique = $vehicle['uniqueId'] ?? null;
                 $vehicles[] = [
-                    'id' => 'feed-'.$workspace->public_id.'-'.$index,
+                    'id' => $unique
+                        ? 'feed-'.$workspace->public_id.'-'.$unique
+                        : 'feed-'.$workspace->public_id.'-'.$index,
                     'workspaceId' => $workspace->public_id,
                     'name' => $vehicle['name'] ?? 'Fahrzeug',
                     'category' => self::mapVehicleCategory($vehicle['category'] ?? null, $vehicle['type'] ?? null),
-                    // Stats JSON has no farmId; savegame matching comes later.
-                    'farmId' => null,
+                    'farmId' => $vehicle['farmId'] ?? null,
                     'iconUrl' => null,
                     'x' => $vehicle['x'] ?? null,
                     'y' => $vehicle['y'] ?? null,
                     'z' => $vehicle['z'] ?? null,
                     'fill' => null,
-                    'hours' => null,
+                    'hours' => $vehicle['hours'] ?? null,
                     'observedAt' => $snapshot->fetchedAtUtc,
                 ];
             }

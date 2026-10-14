@@ -253,18 +253,20 @@ export function WorkspaceSettingsPage() {
                 )}
               </label>
               {workspace.gameVersion || workspace.linkState === "online" ? (
-                <p className="instance-version">
-                  <span>{t("card.gameVersion")}</span>
-                  <strong>{workspace.gameVersion ?? "—"}</strong>
+                <p className="instance-version" aria-label={`${t("card.gameVersion")} ${workspace.gameVersion ?? "—"}`}>
+                  <span className="instance-version-item">
+                    <span>{t("card.gameVersion")}</span>
+                    <strong>{workspace.gameVersion ?? "—"}</strong>
+                  </span>
                   {workspace.playersOnline !== null ? (
-                    <>
+                    <span className="instance-version-item">
                       <span>{t("card.players")}</span>
                       <strong>
                         {workspace.playerCapacity === null
                           ? workspace.playersOnline
                           : `${workspace.playersOnline}/${workspace.playerCapacity}`}
                       </strong>
-                    </>
+                    </span>
                   ) : null}
                 </p>
               ) : null}
@@ -498,8 +500,10 @@ export function WorkspaceSettingsPage() {
             <section className="panel settings-card">
               <h2>{t("workspace.connector")}</h2>
               <p className="instance-version">
-                <span>{t("workspace.version")}</span>
-                <strong>{workspace.connectorVersion ?? t("workspace.noVersion")}</strong>
+                <span className="instance-version-item">
+                  <span>{t("workspace.version")}</span>
+                  <strong>{workspace.connectorVersion ?? t("workspace.noVersion")}</strong>
+                </span>
               </p>
               <div className="setting-actions">
                 <button type="button" className="btn btn-secondary" disabled={testing} onClick={() => void test()}>
