@@ -71,12 +71,23 @@ final class RequiredModsService
             if ($runningVersion === null) {
                 $runningVersion = $this->feedModVersion($item, $feedMods);
             }
+            // modSettings/hello is optional — fall back to version inside the installed zip.
+            if ($runningVersion === null && $installed && is_string($installedPath) && str_ends_with(strtolower($installedPath), '.zip')) {
+                $runningVersion = $host['zipVersions'][$item['id']] ?? null;
+            }
 
             if ($item['id'] === 'FS25_AgriVisionConnector' && is_string($runningVersion) && $runningVersion !== '') {
                 if ($workspace->connector_version !== $runningVersion) {
                     $workspace->connector_version = $runningVersion;
                     $workspace->save();
                 }
+            }
+
+            $pkg = $item['deployable'] ? $packageVersion : null;
+            $updateAvailable = $this->isNewerVersion($pkg, $runningVersion);
+            // Installed but version unknown → surface as update check needed when a package exists.
+            if (! $updateAvailable && $installed && $pkg !== null && ($runningVersion === null || $runningVersion === '')) {
+                $updateAvailable = true;
             }
 
             $mods[] = [
@@ -89,7 +100,8 @@ final class RequiredModsService
                 'activated' => $activated,
                 'installedPath' => $installedPath,
                 'runningVersion' => $runningVersion,
-                'packageVersion' => $item['deployable'] ? $packageVersion : null,
+                'packageVersion' => $pkg,
+                'updateAvailable' => $updateAvailable,
                 'status' => $this->statusKey($installed, $activated),
             ];
         }
@@ -191,6 +203,27 @@ final class RequiredModsService
         return 'missing';
     }
 
+    private function isNewerVersion(?string $package, ?string $running): bool
+    {
+        if ($package === null || $package === '' || $running === null || $running === '') {
+            return false;
+        }
+        $a = array_map('intval', explode('.', preg_replace('/[^0-9.]/', '', $package) ?? '0'));
+        $b = array_map('intval', explode('.', preg_replace('/[^0-9.]/', '', $running) ?? '0'));
+        $len = max(count($a), count($b), 4);
+        for ($i = 0; $i < $len; $i++) {
+            $left = $a[$i] ?? 0;
+            $right = $b[$i] ?? 0;
+            if ($left === $right) {
+                continue;
+            }
+
+            return $left > $right;
+        }
+
+        return false;
+    }
+
     /**
      * @return list<array{name: string, title: string|null, version: string|null}>
      */
@@ -223,12 +256,13 @@ final class RequiredModsService
      *   ok: bool,
      *   installed: array<string, bool>,
      *   paths: array<string, string|null>,
-     *   hello: array<string, array{present: bool, version: string|null}>
+     *   hello: array<string, array{present: bool, version: string|null}>,
+     *   zipVersions: array<string, string|null>
      * }
      */
     private function hostProbe(Workspace $workspace): array
     {
-        $empty = ['ok' => false, 'installed' => [], 'paths' => [], 'hello' => []];
+        $empty = ['ok' => false, 'installed' => [], 'paths' => [], 'hello' => [], 'zipVersions' => []];
         $access = HostAccess::query()->where('workspace_id', $workspace->id)->first();
         if (! $access || ! $access->hasPassword()) {
             return $empty;
@@ -243,6 +277,7 @@ final class RequiredModsService
         $installed = [];
         $paths = [];
         $hello = [];
+        $zipVersions = [];
 
         try {
             $modsDir = ConnectorDeployService::resolveModsDirectory($client, $access);
@@ -269,6 +304,7 @@ final class RequiredModsService
             }
             $installed[$item['id']] = $isInstalled;
             $paths[$item['id']] = $isInstalled ? $path : null;
+            $zipVersions[$item['id']] = null;
 
             $hello[$item['id']] = ['present' => false, 'version' => null];
             if ($item['id'] === 'FS25_AgriVisionConnector' && $modSettings !== '') {
@@ -287,8 +323,17 @@ final class RequiredModsService
                         $hello[$item['id']] = ['present' => true, 'version' => null];
                     }
                 } catch (Throwable) {
-                    // ignore
+                    // ignore — missing modSettings folder is normal until the mod has run once.
                 }
+            }
+
+            if (
+                $isInstalled
+                && is_string($path)
+                && str_ends_with(strtolower($path), '.zip')
+                && ($hello[$item['id']]['version'] ?? null) === null
+            ) {
+                $zipVersions[$item['id']] = $this->versionFromRemoteZip($client, $path);
             }
         }
 
@@ -297,7 +342,40 @@ final class RequiredModsService
             'installed' => $installed,
             'paths' => $paths,
             'hello' => $hello,
+            'zipVersions' => $zipVersions,
         ];
+    }
+
+    private function versionFromRemoteZip(HostFileClient $client, string $remoteZip): ?string
+    {
+        $tmp = tempnam(sys_get_temp_dir(), 'avmod');
+        if ($tmp === false) {
+            return null;
+        }
+        try {
+            $bytes = $client->read($remoteZip);
+            if ($bytes === '' || strlen($bytes) > 12 * 1024 * 1024) {
+                return null;
+            }
+            if (@file_put_contents($tmp, $bytes) === false) {
+                return null;
+            }
+            $zip = new \ZipArchive;
+            if ($zip->open($tmp) !== true) {
+                return null;
+            }
+            $raw = $zip->getFromName('modDesc.xml');
+            $zip->close();
+            if (! is_string($raw) || ! preg_match('/<version>\s*([^<]+)\s*<\/version>/i', $raw, $m)) {
+                return null;
+            }
+
+            return trim($m[1]) ?: null;
+        } catch (Throwable) {
+            return null;
+        } finally {
+            @unlink($tmp);
+        }
     }
 
     private function dirPresent(HostFileClient $client, string $path): bool

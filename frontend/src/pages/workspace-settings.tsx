@@ -4,8 +4,10 @@ import { LoaderCircle } from "lucide-react"
 import {
   apiConnectorPackageMeta,
   apiDeployConnector,
+  apiRequiredMods,
   downloadConnectorPackage,
   type ConnectorPackageMeta,
+  type RequiredModStatus,
 } from "../api"
 import { RequiredModsPanel } from "../components/required-mods"
 import { FieldTip, MissingWorkspace, Modal, PermissionBlock } from "../components/ui"
@@ -58,30 +60,37 @@ export function WorkspaceSettingsPage() {
   const [dialog, setDialog] = useState<"download" | "disable" | "confirm" | "code" | null>(null)
   const [code, setCode] = useState("")
   const [packageMeta, setPackageMeta] = useState<ConnectorPackageMeta | null>(null)
+  const [connectorMod, setConnectorMod] = useState<RequiredModStatus | null>(null)
+  const [updateCheckBusy, setUpdateCheckBusy] = useState(false)
   const [deployBusy, setDeployBusy] = useState(false)
   const [downloadBusy, setDownloadBusy] = useState(false)
 
   useEffect(() => {
-    if (dialog !== "download") return
+    if (dialog !== "download" || !workspace) return
     let cancelled = false
-    void apiConnectorPackageMeta()
-      .then((meta) => {
-        if (!cancelled) setPackageMeta(meta)
+    setUpdateCheckBusy(true)
+    void Promise.all([
+      apiConnectorPackageMeta().catch(() => ({
+        available: false,
+        error: "meta",
+        version: null,
+        fileName: "FS25_AgriVisionConnector.zip",
+      })),
+      apiRequiredMods(workspace.id).catch(() => null),
+    ])
+      .then(([meta, mods]) => {
+        if (cancelled) return
+        setPackageMeta(meta)
+        const connector = mods?.mods.find((m) => m.id === "FS25_AgriVisionConnector") ?? null
+        setConnectorMod(connector)
       })
-      .catch(() => {
-        if (!cancelled) {
-          setPackageMeta({
-            available: false,
-            error: "meta",
-            version: null,
-            fileName: "FS25_AgriVisionConnector.zip",
-          })
-        }
+      .finally(() => {
+        if (!cancelled) setUpdateCheckBusy(false)
       })
     return () => {
       cancelled = true
     }
-  }, [dialog])
+  }, [dialog, workspace?.id])
 
   if (!workspace) return <MissingWorkspace />
   if (!allowed || !manage) return <PermissionBlock />
@@ -595,8 +604,29 @@ export function WorkspaceSettingsPage() {
           {packageMeta && !packageMeta.available ? (
             <p className="field-error">{packageMeta.error || t("wsettings.connectorPackageMissing")}</p>
           ) : null}
+          {updateCheckBusy ? (
+            <p className="hint">{t("wsettings.requiredModsChecking")}</p>
+          ) : connectorMod?.updateAvailable && packageMeta?.version ? (
+            <p className="field-error">
+              {t("wsettings.connectorUpdateAvailable", {
+                package: packageMeta.version,
+                running: connectorMod.runningVersion ?? "—",
+              })}
+            </p>
+          ) : packageMeta?.version && connectorMod?.runningVersion ? (
+            <p className="hint">
+              {t("wsettings.connectorUpToDate", { package: packageMeta.version })}
+            </p>
+          ) : packageMeta?.version ? (
+            <p className="hint">
+              {t("wsettings.connectorNoRunningVersion", { package: packageMeta.version })}
+            </p>
+          ) : null}
+          {connectorMod && !connectorMod.activated ? (
+            <p className="hint">{t("wsettings.connectorModSettingsMissing")}</p>
+          ) : null}
           <p className="hint">{t("wsettings.connectorDeployHint")}</p>
-          <div className="modal-actions">
+          <div className="modal-actions modal-actions-stack">
             <button type="button" className="btn btn-ghost" onClick={() => setDialog(null)}>
               {t("close")}
             </button>

@@ -181,41 +181,30 @@ final class WorkspaceFeedService
                 // Positions still useful without farm stubs / matching.
             }
 
-            $connector = (new ConnectorSnapshotService)->read($workspace);
+            $connector = ['vehicles' => [], 'icons' => [], 'basePath' => null];
+            try {
+                $connector = (new ConnectorSnapshotService)->read($workspace);
+            } catch (Throwable) {
+                // Host connector files are optional enrichment.
+            }
             $metaVehicles = ConnectorSnapshotService::mergeMeta($connector['vehicles'], $saveVehicles);
 
             // Savegame/connector = inventory + farmId; stats = live name/position.
             $enriched = VehicleFarmMatcher::mergeInventory($snapshot->vehicles, $metaVehicles);
 
-            $neededKeys = [];
-            foreach ($enriched as $vehicle) {
-                $modKey = $vehicle['modKey'] ?? ModKey::fromFilename($vehicle['filename'] ?? null);
-                if (is_string($modKey) && $modKey !== '') {
-                    $neededKeys[] = $modKey;
-                }
-            }
-            foreach ($connector['icons'] as $icon) {
-                if (! empty($icon['key'])) {
-                    $neededKeys[] = (string) $icon['key'];
-                }
-            }
-            // Also warm icons for feed-listed mods that vehicles may reference.
-            foreach ($snapshot->mods as $mod) {
-                $name = ModKey::clean((string) ($mod['name'] ?? ''));
-                if ($name !== null) {
-                    $neededKeys[] = $name;
-                }
-            }
-
+            // Icons are served lazily via /connector/icons/{modKey} — never block the
+            // vehicles response on FTP zip downloads (that hung equipment empty).
             $iconCache = new ModIconCacheService;
-            $readyIcons = $iconCache->ensure($workspace, $neededKeys);
 
             $vehicles = [];
             foreach ($enriched as $index => $vehicle) {
                 $unique = $vehicle['uniqueId'] ?? null;
                 $modKey = $vehicle['modKey'] ?? ModKey::fromFilename($vehicle['filename'] ?? null);
                 $iconUrl = null;
-                if (is_string($modKey) && $modKey !== '' && isset($readyIcons[$modKey])) {
+                if (is_string($modKey) && $modKey !== '' && $iconCache->localPath($workspace, $modKey) !== null) {
+                    $iconUrl = $iconCache->publicUrl($workspace, $modKey);
+                } elseif (is_string($modKey) && $modKey !== '') {
+                    // Hint URL — endpoint fetches/caches on first image request.
                     $iconUrl = $iconCache->publicUrl($workspace, $modKey);
                 }
                 $vehicles[] = [

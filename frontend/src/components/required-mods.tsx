@@ -36,7 +36,17 @@ export function RequiredModsPanel({
   }, [load])
 
   function statusLabel(mod: RequiredModStatus) {
-    if (mod.status === "active") return t("wsettings.requiredModsActive")
+    if (mod.updateAvailable) {
+      return t("wsettings.requiredModsUpdateAvailable", {
+        package: mod.packageVersion ?? "—",
+        running: mod.runningVersion ?? "—",
+      })
+    }
+    if (mod.status === "active") {
+      return mod.packageVersion
+        ? t("wsettings.requiredModsUpToDate")
+        : t("wsettings.requiredModsActive")
+    }
     if (mod.status === "installed") return t("wsettings.requiredModsOnlyInstalled")
     return t("wsettings.requiredModsMissing")
   }
@@ -90,7 +100,10 @@ export function RequiredModsPanel({
               <span className={mod.activated ? "flag ok" : "flag"} role="cell">
                 {mod.activated ? t("yes") : t("no")}
               </span>
-              <span className={`flag status-${mod.status}`} role="cell">
+              <span
+                className={`flag status-${mod.status}${mod.updateAvailable ? " status-update" : ""}`}
+                role="cell"
+              >
                 {statusLabel(mod)}
               </span>
             </div>

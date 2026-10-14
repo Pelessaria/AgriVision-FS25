@@ -73,11 +73,16 @@ export function VehiclesPage() {
 
   const rows = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
-    return vehicles
-      .filter((vehicle) => vehicle.workspaceId === id)
+    const inWorkspace = vehicles.filter((vehicle) => vehicle.workspaceId === id)
+    const anyFarmBound = inWorkspace.some((vehicle) => vehicle.farmId !== null)
+    return inWorkspace
       .filter((vehicle) => {
         if (!farm) return true
-        return vehicle.farmId !== null && Number(vehicle.farmId) === Number(farm.gameFarmId)
+        if (vehicle.farmId !== null) {
+          return Number(vehicle.farmId) === Number(farm.gameFarmId)
+        }
+        // No farmId on any vehicle yet (matching still warming) — keep list visible.
+        return !anyFarmBound
       })
       .filter((vehicle) => matchesFilter(vehicle, filter))
       .filter((vehicle) => (needle ? vehicle.name.toLocaleLowerCase().includes(needle) : true))

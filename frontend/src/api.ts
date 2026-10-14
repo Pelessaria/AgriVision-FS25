@@ -268,6 +268,7 @@ export type RequiredModStatus = {
   installedPath: string | null
   runningVersion: string | null
   packageVersion: string | null
+  updateAvailable?: boolean
   status: "active" | "installed" | "missing"
 }
 

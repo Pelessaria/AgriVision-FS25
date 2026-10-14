@@ -54,7 +54,8 @@ final class ModIconCacheService
         $dir = $this->cacheDir($workspace);
         File::ensureDirectoryExists($dir);
 
-        foreach (array_slice($keys, 0, 60) as $key) {
+        // Hard cap: icon endpoint usually asks for one key; keep batch tiny.
+        foreach (array_slice($keys, 0, 8) as $key) {
             $safe = $this->safeKey($key);
             $existing = $this->localPath($workspace, $key);
             if ($existing !== null) {
@@ -73,8 +74,8 @@ final class ModIconCacheService
                 continue;
             }
 
-            // Skip huge archives (icon lives near the zip root; still need the archive).
-            if (strlen($bytes) > 80 * 1024 * 1024) {
+            // Skip large archives — full ZIP pull over FTP is too slow for the UI path.
+            if (strlen($bytes) > 12 * 1024 * 1024) {
                 continue;
             }
 
