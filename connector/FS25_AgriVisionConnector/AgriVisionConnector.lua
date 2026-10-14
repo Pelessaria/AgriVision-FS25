@@ -12,7 +12,7 @@
 
 AgriVisionConnector = {}
 AgriVisionConnector.MOD_NAME = "FS25_AgriVisionConnector"
-AgriVisionConnector.VERSION = "0.1.2.6"
+AgriVisionConnector.VERSION = "0.1.2.7"
 AgriVisionConnector.SCHEMA = "1"
 AgriVisionConnector.TICK_MS = 5000
 AgriVisionConnector.FULL_VEHICLE_EVERY_MS = 60000
@@ -69,6 +69,10 @@ function AgriVisionConnector:init()
     ensureDir(self.iconsDir)
     ensureDir(self.storeIconsDir)
     -- mod icons deferred (needed later for mod list UI, not vehicle overview)
+
+    -- Drop empty leftover command.xml so the Engine does not spam
+    -- "Trying to open empty xml file" every tick before the dashboard writes one.
+    self:deletePath(self.baseDir .. "command.xml")
 
     log(
         string.format(
@@ -350,13 +354,54 @@ function AgriVisionConnector:storeKeyFromFilename(filename)
     return path
 end
 
-function AgriVisionConnector:resolveStoreImagePath(raw)
+--- Expand a store-image path into Engine-resolvable variants (folder, zip, dds).
+--- Dedicated hosts often ship mods as .zip only; PNG folder paths fail while
+--- ModName.zip/…/store_x.dds succeeds via copyFile.
+function AgriVisionConnector:buildStoreImageCandidates(raw)
+    local out = {}
+    local seen = {}
+    local function add(path)
+        if path == nil then
+            return
+        end
+        local p = tostring(path):gsub("\\", "/")
+        if p == "" or seen[p] then
+            return
+        end
+        seen[p] = true
+        table.insert(out, p)
+    end
+    local function addWithAltExt(path)
+        add(path)
+        if path == nil then
+            return
+        end
+        local p = tostring(path)
+        local lower = string.lower(p)
+        if string.find(lower, "%.png$") then
+            add((string.gsub(p, "[Pp][Nn][Gg]$", "dds")))
+        elseif string.find(lower, "%.dds$") then
+            add((string.gsub(p, "[Dd][Dd][Ss]$", "png")))
+        end
+    end
+    local function addZipVariant(path)
+        if path == nil then
+            return
+        end
+        local p = tostring(path):gsub("\\", "/")
+        -- …/mods/ModName/rest → …/mods/ModName.zip/rest
+        local before, modName, rest = string.match(p, "^(.-/mods/)([^/]+)/(.+)$")
+        if before ~= nil and modName ~= nil and rest ~= nil and not string.find(modName, "%.zip$") then
+            addWithAltExt(before .. modName .. ".zip/" .. rest)
+        end
+    end
+
     if raw == nil then
-        return nil
+        return out
     end
     local path = tostring(raw)
     if path == "" then
-        return nil
+        return out
     end
     if NetworkUtil ~= nil and NetworkUtil.convertFromNetworkFilename ~= nil then
         local ok, converted = pcall(function()
@@ -367,19 +412,17 @@ function AgriVisionConnector:resolveStoreImagePath(raw)
         end
     end
 
-    local candidates = { path }
+    local seeds = { path }
 
-    -- GIANTS often stores relative or $data/… paths; Utils.getFilename expands them.
     if Utils ~= nil and Utils.getFilename ~= nil then
         local ok, resolved = pcall(function()
             return Utils.getFilename(path, "")
         end)
         if ok and resolved ~= nil and tostring(resolved) ~= "" then
-            table.insert(candidates, tostring(resolved))
+            table.insert(seeds, tostring(resolved))
         end
     end
 
-    -- $moddir$ModName/… → profile mods folder (folder or zip).
     local modName, modRest = string.match(path, "^%$moddir%$([^/]+)/(.+)$")
     if modName ~= nil and modRest ~= nil then
         local profile = nil
@@ -390,15 +433,14 @@ function AgriVisionConnector:resolveStoreImagePath(raw)
             end
         end
         if profile ~= nil then
-            table.insert(candidates, profile .. "mods/" .. modName .. "/" .. modRest)
-            table.insert(candidates, profile .. "mods/" .. modName .. ".zip/" .. modRest)
+            table.insert(seeds, profile .. "mods/" .. modName .. "/" .. modRest)
+            table.insert(seeds, profile .. "mods/" .. modName .. ".zip/" .. modRest)
         end
         if g_modNameToDirectory ~= nil and g_modNameToDirectory[modName] ~= nil then
-            table.insert(candidates, g_modNameToDirectory[modName] .. modRest)
+            table.insert(seeds, g_modNameToDirectory[modName] .. modRest)
         end
     end
 
-    -- Strip $data/ and try under game install if getAppBasePath exists.
     local stripped = path
     if string.sub(stripped, 1, 6) == "$data/" then
         stripped = "data/" .. string.sub(stripped, 7)
@@ -408,28 +450,84 @@ function AgriVisionConnector:resolveStoreImagePath(raw)
     if getAppBasePath ~= nil then
         local ok, base = pcall(getAppBasePath)
         if ok and base ~= nil and tostring(base) ~= "" then
-            table.insert(candidates, tostring(base) .. stripped)
+            table.insert(seeds, tostring(base) .. stripped)
             if stripped ~= path then
-                table.insert(candidates, tostring(base) .. path)
+                table.insert(seeds, tostring(base) .. path)
             end
         end
     end
 
-    -- Prefer paths the Engine can see. Keep a fallback for copyFile — some zip
-    -- virtual paths copy even when fileExists is picky — but copyIconFile will
-    -- delete empty destinations (0.1.2.5 wrote 0-byte stubs).
-    local fallback = nil
+    for _, seed in ipairs(seeds) do
+        addWithAltExt(seed)
+        addZipVariant(seed)
+        -- zip + alt ext (png↔dds) for the zip form
+        local p = tostring(seed):gsub("\\", "/")
+        local before, name, rest = string.match(p, "^(.-/mods/)([^/]+)/(.+)$")
+        if before ~= nil and name ~= nil and rest ~= nil and not string.find(name, "%.zip$") then
+            addWithAltExt(before .. name .. ".zip/" .. rest)
+        end
+    end
+
+    -- Prefer DDS first (copyFile reliably yields ~262KB; PNG often leaves 0-byte stubs).
+    table.sort(out, function(a, b)
+        local ad = self:iconExtFromPath(a) == "dds"
+        local bd = self:iconExtFromPath(b) == "dds"
+        if ad ~= bd then
+            return ad
+        end
+        return a < b
+    end)
+    return out
+end
+
+function AgriVisionConnector:resolveStoreImagePath(raw)
+    local candidates = self:buildStoreImageCandidates(raw)
+    if #candidates == 0 then
+        return nil
+    end
     for _, candidate in ipairs(candidates) do
-        if candidate ~= nil and candidate ~= "" then
-            if self:fileLooksPresent(candidate) then
-                return candidate
-            end
-            if fallback == nil then
-                fallback = candidate
+        if self:fileLooksPresent(candidate) then
+            return candidate
+        end
+    end
+    -- Fallback: first DDS candidate, else first seed — copyIconFile will try.
+    for _, candidate in ipairs(candidates) do
+        if self:iconExtFromPath(candidate) == "dds" then
+            return candidate
+        end
+    end
+    return candidates[1]
+end
+
+function AgriVisionConnector:tryCopyStoreIcon(storeKey, rawSrc)
+    local candidates = self:buildStoreImageCandidates(rawSrc)
+    if #candidates == 0 then
+        return false, nil, nil
+    end
+    -- Without getFileSize, PNG/JPG copyFile has left 0-byte stubs on this host.
+    -- Only attempt DDS; backend converts if a PNG-only asset remains missing.
+    local sizeKnown = getFileSize ~= nil
+    for _, src in ipairs(candidates) do
+        local ext = self:iconExtFromPath(src)
+        if sizeKnown or ext == "dds" then
+            local rel = string.format("icons/store/%s.%s", storeKey, ext)
+            local dest = self.baseDir .. rel
+            if self:copyIconFile(src, dest) then
+                -- Drop sibling stubs (e.g. old 0-byte .png after a .dds success).
+                for _, otherExt in ipairs({ "png", "dds", "jpg", "jpeg" }) do
+                    if otherExt ~= ext then
+                        local other = self.baseDir
+                            .. string.format("icons/store/%s.%s", storeKey, otherExt)
+                        if self.copiedStorePaths == nil or not self.copiedStorePaths[other] then
+                            self:deletePath(other)
+                        end
+                    end
+                end
+                return true, rel, src
             end
         end
     end
-    return fallback
+    return false, nil, nil
 end
 
 function AgriVisionConnector:vehicleStoreImage(vehicle, filename)
@@ -562,18 +660,20 @@ function AgriVisionConnector:copyIconFile(src, dest)
     if src == nil or dest == nil or src == "" or dest == "" then
         return false
     end
-    -- Non-empty dest already on disk (or verified this session).
+    -- Verified this session.
     if self.copiedStorePaths ~= nil and self.copiedStorePaths[dest] then
         return true
     end
-    if self:fileLooksPresent(dest) then
+    -- Only skip re-copy when Engine can prove dest is non-empty. Without
+    -- getFileSize, fileExists alone keeps 0-byte leftovers from older builds.
+    if getFileSize ~= nil and self:fileLooksPresent(dest) then
         if self.copiedStorePaths == nil then
             self.copiedStorePaths = {}
         end
         self.copiedStorePaths[dest] = true
         return true
     end
-    -- Drop 0-byte leftovers from older connector builds.
+    -- Drop leftovers (0-byte PNG stubs, stale failed copies).
     if self:engineFileExists(dest) then
         self:deletePath(dest)
     end
@@ -588,14 +688,12 @@ function AgriVisionConnector:copyIconFile(src, dest)
         self:deletePath(dest)
         return false
     end
-    -- Reject empty stubs when the Engine can report size (FS25 dedicated).
     local size = self:engineFileSize(dest)
     if size ~= nil and size <= 0 then
         self:deletePath(dest)
         return false
     end
-    -- Without getFileSize, only keep dest if the Engine could see the source.
-    -- Blind copyFile(missingSrc) is what left 96× 0-byte icons in 0.1.2.5.
+    -- Without getFileSize, only keep if source was visible (DDS copies work).
     if size == nil and not srcVisible then
         self:deletePath(dest)
         return false
@@ -629,11 +727,7 @@ function AgriVisionConnector:writeStoreIconsManifest()
     local failSamples = {}
 
     for storeKey, meta in pairs(pending) do
-        local src = meta.src
-        local ext = self:iconExtFromPath(src)
-        local rel = string.format("icons/store/%s.%s", storeKey, ext)
-        local dest = self.baseDir .. rel
-        local ok = self:copyIconFile(src, dest)
+        local ok, rel, usedSrc = self:tryCopyStoreIcon(storeKey, meta.src)
         if ok then
             copiedCount = copiedCount + 1
             table.insert(
@@ -648,7 +742,10 @@ function AgriVisionConnector:writeStoreIconsManifest()
         else
             failedCount = failedCount + 1
             if #failSamples < 5 then
-                table.insert(failSamples, string.format("%s src=%s", tostring(storeKey), tostring(src)))
+                table.insert(
+                    failSamples,
+                    string.format("%s src=%s", tostring(storeKey), tostring(meta.src))
+                )
             end
         end
     end
@@ -687,18 +784,17 @@ function AgriVisionConnector:processCommands()
     if XMLFile == nil or XMLFile.loadIfExists == nil then
         return
     end
-    if fileExists ~= nil then
-        local okExists, exists = pcall(fileExists, path)
-        if okExists and not exists then
-            return
-        end
+    if not self:engineFileExists(path) then
+        return
     end
 
     local xmlFile = nil
     local okLoad = pcall(function()
         xmlFile = XMLFile.loadIfExists("agriVisionCmd", path)
     end)
+    -- Empty/corrupt command.xml makes the Engine log every tick; remove it.
     if not okLoad or xmlFile == nil then
+        self:deletePath(path)
         return
     end
 
@@ -715,12 +811,11 @@ function AgriVisionConnector:processCommands()
     end)
 
     if id == nil or id == "" then
+        self:deletePath(path)
         return
     end
     if self.processedCommands[id] then
-        if deleteFile ~= nil then
-            pcall(deleteFile, path)
-        end
+        self:deletePath(path)
         return
     end
 
@@ -741,9 +836,7 @@ function AgriVisionConnector:processCommands()
         self:xmlEscape(self.VERSION)
     )
     self:writeTextFile(self.baseDir .. "command_result.xml", result)
-    if deleteFile ~= nil then
-        pcall(deleteFile, path)
-    end
+    self:deletePath(path)
 end
 
 function AgriVisionConnector:tick(dt)
