@@ -459,13 +459,14 @@ export const de = {
     connectorDeployHint:
       "Ziel ist der Mods-Ordner neben modSettings (z. B. mods/FS25_AgriVisionConnector.zip). Enthält keine Zugangsdaten.",
     requiredModsTitle: "Voraussetzungen",
-    requiredModsLead:
-      "Pflicht-Mods auf dem Spielserver: installiert (ZIP im Mods-Ordner) und aktiviert (vom Dedicated Server geladen).",
-    requiredModsRefresh: "Status prüfen",
+    requiredModsLead: "Pflicht-Mods: installiert im Mods-Ordner, aktiviert in der Live-Modliste des Servers.",
+    requiredModsRefresh: "Prüfen",
     requiredModsInstalled: "Installiert",
     requiredModsActivated: "Aktiviert",
+    requiredModsColMod: "Mod",
+    requiredModsColStatus: "Status",
     requiredModsMissing: "Fehlt",
-    requiredModsOnlyInstalled: "Installiert, nicht aktiv",
+    requiredModsOnlyInstalled: "Nur installiert",
     requiredModsActive: "Aktiv",
     requiredModsVersion: "v{{version}}",
     requiredModsPackage: "Paket {{version}}",

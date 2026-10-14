@@ -50,12 +50,19 @@ final class FeedSnapshot
                 ? $statsJson['Slots']
                 : (is_array($statsJson['slots'] ?? null) ? $statsJson['slots'] : [])
         );
-        $modsRaw = $statsJson['Mods']['Mod'] ?? $statsJson['mods']['Mod'] ?? $statsJson['Mods'] ?? [];
-        if (isset($modsRaw['name']) || isset($modsRaw['@attributes'])) {
+        // Live JSON often uses flat `mods: [{…}]`; XML-ish JSON uses `Mods.Mod`.
+        $modsRaw = $statsJson['Mods']['Mod']
+            ?? $statsJson['mods']['Mod']
+            ?? $statsJson['Mods']
+            ?? $statsJson['mods']
+            ?? [];
+        if (isset($modsRaw['name']) || isset($modsRaw['@attributes']) || isset($modsRaw['title'])) {
             $modsRaw = [$modsRaw];
         }
         if (! is_array($modsRaw)) {
             $modsRaw = [];
+        } else {
+            $modsRaw = array_values(array_filter($modsRaw, 'is_array'));
         }
 
         // Live JSON: flat `vehicles: [{…}]`. XML-ish: `Vehicles.Vehicle` (object or list).

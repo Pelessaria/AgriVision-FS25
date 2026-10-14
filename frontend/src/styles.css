@@ -1428,85 +1428,101 @@ h1.title-with-no { display: flex; }
   color: var(--accent);
   white-space: nowrap;
 }
-.required-mods {
+.req-mods {
   display: grid;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 12px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
 }
-.required-mods.compact {
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: transparent;
+.req-mods.compact {
+  margin-top: 8px;
+  padding-top: 10px;
 }
-.required-mods-head {
+.req-mods-head {
+  display: flex;
+  align-items: flex-start;
   justify-content: space-between;
+  gap: 12px;
   flex-wrap: wrap;
-  gap: 8px;
 }
-.required-mods-head h2 {
-  margin: 0;
+.req-mods-head h2 {
+  margin: 0 0 4px;
   font-size: 0.95rem;
+  font-weight: 600;
 }
-.required-mods-list {
-  list-style: none;
+.req-mods-head .hint {
   margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 8px;
+  max-width: 42rem;
 }
-.required-mod-row {
+.req-mods-table {
   display: grid;
-  gap: 6px;
-  padding: 10px 12px;
+  gap: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: color-mix(in srgb, var(--surface) 92%, #000);
+  overflow: hidden;
 }
-.required-mod-row.status-active {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
-}
-.required-mod-row.status-missing {
-  border-color: color-mix(in srgb, #ff6d88 35%, var(--line));
-}
-.required-mod-main {
-  display: flex;
-  flex-wrap: wrap;
+.req-mods-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) 5.5rem 5.5rem minmax(6rem, 0.8fr);
+  gap: 10px 14px;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line);
+  background: transparent;
 }
-.required-mod-main strong {
-  font-size: 0.92rem;
+.req-mods-row:first-child {
+  border-top: none;
 }
-.required-mod-badge {
+.req-mods-row.head {
+  background: color-mix(in srgb, var(--surface) 88%, #000);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.req-mods-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.req-mods-name strong {
+  font-size: 0.9rem;
+  font-weight: 560;
+}
+.req-mods-name .faint {
   font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.req-mods .flag {
+  font-size: 0.82rem;
   color: var(--muted);
 }
-.required-mod-badge.status-active {
+.req-mods .flag.ok,
+.req-mods .flag.status-active {
   color: var(--accent);
 }
-.required-mod-badge.status-missing {
+.req-mods .flag.status-installed {
+  color: #c9a227;
+}
+.req-mods .flag.status-missing {
   color: #ff6d88;
 }
-.required-mod-badge.status-installed {
-  color: #e6b84d;
+.req-mods-foot {
+  margin: 0;
 }
-.required-mod-flags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 16px;
-  font-size: 0.8rem;
-}
-.required-mod-flags .ok {
-  color: var(--accent);
-}
-.required-mod-flags .no {
-  color: var(--muted);
-}
-.required-mod-meta {
-  font-size: 0.75rem;
-  word-break: break-word;
+@media (max-width: 720px) {
+  .req-mods-row,
+  .req-mods-row.head {
+    grid-template-columns: 1fr 1fr;
+  }
+  .req-mods-name {
+    grid-column: 1 / -1;
+  }
 }
 .instance-version,
 .host-savegame-echo {

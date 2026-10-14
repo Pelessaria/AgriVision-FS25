@@ -42,50 +42,63 @@ export function RequiredModsPanel({
   }
 
   return (
-    <section className={compact ? "required-mods compact" : "panel required-mods"}>
-      <div className="field-label-row required-mods-head">
-        <h2>{t("wsettings.requiredModsTitle")}</h2>
+    <section className={compact ? "req-mods compact" : "req-mods"}>
+      <header className="req-mods-head">
+        <div>
+          <h2>{t("wsettings.requiredModsTitle")}</h2>
+          {!compact ? <p className="hint">{t("wsettings.requiredModsLead")}</p> : null}
+        </div>
         <button type="button" className="btn btn-ghost btn-small" disabled={busy} onClick={() => void load()}>
           {busy ? <LoaderCircle className="icon spin" /> : <RefreshCw className="icon" />}
           {t("wsettings.requiredModsRefresh")}
         </button>
-      </div>
-      {!compact ? <p className="hint">{t("wsettings.requiredModsLead")}</p> : null}
+      </header>
+
       {busy && !data ? <p className="muted">{t("wsettings.requiredModsChecking")}</p> : null}
       {error ? <p className="field-error">{t("wsettings.connectorDeployFail")}</p> : null}
       {data && !data.hostAccess ? <p className="hint">{t("wsettings.requiredModsNoHost")}</p> : null}
 
       {data ? (
-        <ul className="required-mods-list">
+        <div className="req-mods-table" role="table">
+          <div className="req-mods-row head" role="row">
+            <span role="columnheader">{t("wsettings.requiredModsColMod")}</span>
+            <span role="columnheader">{t("wsettings.requiredModsInstalled")}</span>
+            <span role="columnheader">{t("wsettings.requiredModsActivated")}</span>
+            <span role="columnheader">{t("wsettings.requiredModsColStatus")}</span>
+          </div>
           {data.mods.map((mod) => (
-            <li key={mod.id} className={`required-mod-row status-${mod.status}`}>
-              <div className="required-mod-main">
+            <div key={mod.id} className={`req-mods-row status-${mod.status}`} role="row">
+              <div className="req-mods-name" role="cell">
                 <strong>{mod.title}</strong>
-                <span className={`required-mod-badge status-${mod.status}`}>{statusLabel(mod)}</span>
-              </div>
-              <div className="required-mod-flags">
-                <span className={mod.installed ? "ok" : "no"}>
-                  {t("wsettings.requiredModsInstalled")} — {mod.installed ? t("yes") : t("no")}
+                <span className="faint">
+                  {[
+                    mod.runningVersion
+                      ? t("wsettings.requiredModsVersion", { version: mod.runningVersion })
+                      : null,
+                    mod.packageVersion
+                      ? t("wsettings.requiredModsPackage", { version: mod.packageVersion })
+                      : null,
+                    mod.installedPath,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
-                <span className={mod.activated ? "ok" : "no"}>
-                  {t("wsettings.requiredModsActivated")} — {mod.activated ? t("yes") : t("no")}
-                </span>
               </div>
-              <div className="required-mod-meta faint">
-                {mod.runningVersion
-                  ? t("wsettings.requiredModsVersion", { version: mod.runningVersion })
-                  : null}
-                {mod.packageVersion
-                  ? ` · ${t("wsettings.requiredModsPackage", { version: mod.packageVersion })}`
-                  : null}
-                {mod.installedPath ? ` · ${mod.installedPath}` : null}
-              </div>
-            </li>
+              <span className={mod.installed ? "flag ok" : "flag"} role="cell">
+                {mod.installed ? t("yes") : t("no")}
+              </span>
+              <span className={mod.activated ? "flag ok" : "flag"} role="cell">
+                {mod.activated ? t("yes") : t("no")}
+              </span>
+              <span className={`flag status-${mod.status}`} role="cell">
+                {statusLabel(mod)}
+              </span>
+            </div>
           ))}
-        </ul>
+        </div>
       ) : null}
 
-      <p className="muted">
+      <p className="req-mods-foot muted">
         <Link to={settingsPath}>{t("wsettings.requiredModsOpenPackage")}</Link>
       </p>
     </section>

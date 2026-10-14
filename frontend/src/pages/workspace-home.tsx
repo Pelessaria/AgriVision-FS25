@@ -124,10 +124,6 @@ export function WorkspaceHomePage() {
 
       {notice ? <p className="notice">{t(`notice.${notice}`)}</p> : null}
 
-      {liveMode ? (
-        <RequiredModsPanel workspaceId={workspace.id} settingsPath={`/w/${workspace.id}/settings`} />
-      ) : null}
-
       <div className="stat-grid ws-dash-stats">
         <div className="stat-tile">
           <span>{t("workspace.players")}</span>
@@ -236,6 +232,10 @@ export function WorkspaceHomePage() {
           </ul>
         </section>
       </div>
+
+      {liveMode ? (
+        <RequiredModsPanel workspaceId={workspace.id} settingsPath={`/w/${workspace.id}/settings`} />
+      ) : null}
     </section>
   )
 }

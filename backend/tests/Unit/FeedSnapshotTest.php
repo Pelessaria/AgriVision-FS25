@@ -126,4 +126,29 @@ class FeedSnapshotTest extends TestCase
         $this->assertSame(0, $snapshot->playersOnline);
         $this->assertSame(12, $snapshot->playerCapacity);
     }
+
+    public function test_flat_lowercase_mods_array(): void
+    {
+        $stats = [
+            'server' => ['name' => 'Demo', 'version' => '1.24.0.0'],
+            'slots' => ['capacity' => 8, 'used' => 0, 'players' => []],
+            'mods' => [
+                ['name' => 'FS25_AgriVisionConnector', 'author' => 'AgriVision', 'version' => '0.1.1.1', 'title' => 'AgriVision Connector'],
+                ['name' => 'FS25_Courseplay', 'author' => 'CP', 'version' => '8.1.0.3', 'title' => 'CoursePlay'],
+            ],
+        ];
+
+        $snapshot = FeedSnapshot::fromRaw(
+            baseUrl: 'http://example.test:8080',
+            fetchedAtUtc: '2026-10-14T00:00:00Z',
+            statsJson: $stats,
+            careerXml: '',
+            vehiclesXml: '',
+            economyXml: '',
+        );
+
+        $this->assertSame(2, $snapshot->modCount);
+        $this->assertSame('FS25_AgriVisionConnector', $snapshot->mods[0]['name']);
+        $this->assertSame('AgriVision Connector', $snapshot->mods[0]['title']);
+    }
 }

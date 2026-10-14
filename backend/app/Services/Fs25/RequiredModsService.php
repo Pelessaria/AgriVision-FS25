@@ -33,6 +33,7 @@ final class RequiredModsService
                 'matchNames' => [
                     'agrivision connector',
                     'fs25_agrivisionconnector',
+                    'fs25_agrivisionconnector.zip',
                     'agrivisionconnector',
                 ],
                 'required' => true,
@@ -154,8 +155,15 @@ final class RequiredModsService
     private function matches(array $needles, string $name, ?string $title): bool
     {
         $hay = $this->norm($name.' '.($title ?? ''));
+        if ($hay === '') {
+            return false;
+        }
         foreach ($needles as $needle) {
-            if ($needle !== '' && str_contains($hay, $this->norm($needle))) {
+            $n = $this->norm($needle);
+            if ($n === '') {
+                continue;
+            }
+            if ($hay === $n || str_contains($hay, $n) || str_contains($n, $hay)) {
                 return true;
             }
         }
@@ -165,7 +173,10 @@ final class RequiredModsService
 
     private function norm(string $value): string
     {
-        return strtolower(preg_replace('/[^a-z0-9]+/i', '', $value) ?? '');
+        $value = strtolower($value);
+        $value = preg_replace('/\.zip$/i', '', $value) ?? $value;
+
+        return preg_replace('/[^a-z0-9]+/i', '', $value) ?? '';
     }
 
     private function statusKey(bool $installed, bool $activated): string
@@ -261,7 +272,8 @@ final class RequiredModsService
 
             $hello[$item['id']] = ['present' => false, 'version' => null];
             if ($item['id'] === 'FS25_AgriVisionConnector' && $modSettings !== '') {
-                $helloPath = $modSettings.'/'.$item['folderName'].'/hello.xml';
+                $connectorDir = $modSettings.'/'.$item['folderName'];
+                $helloPath = $connectorDir.'/hello.xml';
                 try {
                     if ($client->fileExists($helloPath)) {
                         $raw = $client->read($helloPath);
@@ -270,6 +282,9 @@ final class RequiredModsService
                             $version = trim($m[1]) ?: null;
                         }
                         $hello[$item['id']] = ['present' => true, 'version' => $version];
+                    } elseif ($this->dirPresent($client, $connectorDir)) {
+                        // Folder created by a running connector even before the first hello flush.
+                        $hello[$item['id']] = ['present' => true, 'version' => null];
                     }
                 } catch (Throwable) {
                     // ignore
