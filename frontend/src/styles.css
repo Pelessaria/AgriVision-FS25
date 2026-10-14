@@ -1428,6 +1428,15 @@ h1.title-with-no { display: flex; }
   color: var(--accent);
   white-space: nowrap;
 }
+.host-savegame-echo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+.host-savegame-echo span {
+  color: var(--muted);
+}
 .update-log-panel {
   display: grid;
   gap: 8px;

@@ -408,7 +408,7 @@ export function WorkspaceSettingsPage() {
                 <p className="hint">{t("wsettings.hostStatusOk")}</p>
               ) : null}
               {workspace.hostAccess?.remoteSavegamePath ? (
-                <p className="instance-version">
+                <p className="instance-version host-savegame-echo">
                   <span>{t("wsettings.hostSavegame")}</span>
                   <strong>{workspace.hostAccess.remoteSavegamePath}</strong>
                 </p>
@@ -456,7 +456,7 @@ export function WorkspaceSettingsPage() {
                       <li key={sg.id} className={sg.active ? "savegame-row active" : "savegame-row"}>
                         <div className="savegame-row-main">
                           <strong>{sg.name || sg.slotKey}</strong>
-                          <span className="faint">{sg.slotKey}</span>
+                          <span className="faint">{sg.path || sg.slotKey}</span>
                           <span className={`savegame-status status-${sg.status}`}>
                             {t(`wsettings.savegameStatus.${sg.status}`, {
                               defaultValue: sg.statusNote || sg.status,

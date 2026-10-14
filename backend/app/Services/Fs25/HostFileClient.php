@@ -202,7 +202,8 @@ final class HostFileClient
                         $modSettings = $this->normalizePath($child);
                     }
 
-                    // One more level (My Games / FarmingSimulator25)
+                    // One more level (My Games / FarmingSimulator25). Nested copies under
+                    // *backup* still register, but preferSavegamePath keeps live slots.
                     try {
                         foreach ($this->listDirectories($child) as $grand) {
                             $candidates[] = $grand;
@@ -257,7 +258,55 @@ final class HostFileClient
             return;
         }
         $slot = strtolower($base);
-        $savegames[$slot] = $this->normalizePath($dir);
+        $candidate = $this->normalizePath($dir);
+        $savegames[$slot] = self::preferSavegamePath($savegames[$slot] ?? null, $candidate);
+    }
+
+    /**
+     * Prefer live top-level slots over nested copies under backup/archive folders.
+     */
+    public static function preferSavegamePath(?string $current, string $candidate): string
+    {
+        $candidate = trim(str_replace('\\', '/', $candidate), '/');
+        if ($current === null || $current === '') {
+            return $candidate;
+        }
+        $current = trim(str_replace('\\', '/', $current), '/');
+        if ($current === $candidate) {
+            return $current;
+        }
+
+        $currentBackup = self::pathLooksLikeBackup($current);
+        $candidateBackup = self::pathLooksLikeBackup($candidate);
+        if ($currentBackup !== $candidateBackup) {
+            return $candidateBackup ? $current : $candidate;
+        }
+
+        $currentDepth = substr_count($current, '/');
+        $candidateDepth = substr_count($candidate, '/');
+        if ($currentDepth !== $candidateDepth) {
+            return $candidateDepth < $currentDepth ? $candidate : $current;
+        }
+
+        return strlen($candidate) < strlen($current) ? $candidate : $current;
+    }
+
+    public static function pathLooksLikeBackup(string $path): bool
+    {
+        $normalized = strtolower(str_replace('\\', '/', $path));
+        foreach (explode('/', $normalized) as $segment) {
+            if ($segment === '') {
+                continue;
+            }
+            if (preg_match('/(?:^|[_-])(backup|bak|old|copy|archiv|archive|tmp|temp)(?:$|[_-])/i', $segment)) {
+                return true;
+            }
+            if (in_array($segment, ['backup', 'backups', 'bak', 'old', 'archive', 'archives', 'archiv'], true)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function slotKeyFromPath(string $path): string
