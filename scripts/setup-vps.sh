@@ -35,6 +35,8 @@ DB_PASSWORD=""
 DB_CONNECTION="mariadb"
 APP_URL=""
 APP_NAME="AgriVision"
+ADMIN_EMAIL="admin@agrivision.local"
+ADMIN_PASSWORD=""
 PHP_BIN=""
 SERVER_NAME="_"
 
@@ -66,7 +68,9 @@ Options:
   --db-connection NAME  mysql or mariadb (default: mariadb)
   --app-url URL         Public URL, e.g. https://agrivision.pelessaria.de
   --app-name NAME       APP_NAME (default: AgriVision)
-  --migrate             Run php artisan migrate --force
+  --admin-email EMAIL   Admin login email (default: admin@agrivision.local)
+  --admin-password PASS Admin login password (generated if omitted with --migrate)
+  --migrate             Run php artisan migrate --force (+ ensure admin user)
   --build-frontend      npm ci && npm run build (needs Node)
   -h, --help            Show this help
 EOF
@@ -536,6 +540,8 @@ while [[ $# -gt 0 ]]; do
     --db-connection) DB_CONNECTION="$2"; shift 2 ;;
     --app-url) APP_URL="$2"; shift 2 ;;
     --app-name) APP_NAME="$2"; shift 2 ;;
+    --admin-email) ADMIN_EMAIL="$2"; shift 2 ;;
+    --admin-password) ADMIN_PASSWORD="$2"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) die "Unknown argument: $1 (try --help)" ;;
   esac
@@ -718,9 +724,20 @@ if id -u "${web_user:-www-data}" >/dev/null 2>&1; then
   run_root chmod 640 "${BACKEND}/.env" || true
 fi
 
+ADMIN_PASSWORD_SHOWN=""
 if [[ "$MIGRATE" -eq 1 ]]; then
   log "Running migrations"
   "$PHP_BIN" artisan migrate --force
+
+  log "Ensuring admin login"
+  if [[ -z "$ADMIN_PASSWORD" ]]; then
+    ADMIN_PASSWORD="$(openssl rand -base64 18 | tr -d '/+=' | head -c 16)"
+    ADMIN_PASSWORD_SHOWN="$ADMIN_PASSWORD"
+  fi
+  "$PHP_BIN" artisan agrivision:admin \
+    --email="$ADMIN_EMAIL" \
+    --password="$ADMIN_PASSWORD" \
+    --name="Admin"
 fi
 
 write_nginx_config
@@ -762,6 +779,30 @@ else
 Quick test without Nginx:
   cd ${BACKEND}
   ${PHP_BIN} artisan serve --host=0.0.0.0 --port=8000
+EOF
+fi
+
+cat <<EOF
+
+Login:
+  URL:   ${APP_URL}/login
+  Email: ${ADMIN_EMAIL}
+EOF
+
+if [[ -n "${ADMIN_PASSWORD_SHOWN}" ]]; then
+  cat <<EOF
+  Pass:  ${ADMIN_PASSWORD_SHOWN}
+  (generated — change after first login)
+EOF
+elif [[ "$MIGRATE" -eq 1 ]]; then
+  cat <<EOF
+  Pass:  (the --admin-password you set)
+EOF
+else
+  cat <<EOF
+  Create/reset admin:
+    cd ${BACKEND}
+    ${PHP_BIN} artisan agrivision:admin --email=you@example.com --password='YourSecret'
 EOF
 fi
 
