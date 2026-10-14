@@ -36,13 +36,16 @@ export const de = {
   farm: {
     switch: "Hof",
     savegameId: "Savegame-ID {{id}}",
-    none: "Kein Hof freigeschaltet",
-    noneTitle: "Kein Hof verfügbar",
-    noneBody: "Für diesen Server hast du keinen Hof freigeschaltet.",
+    stubName: "Hof {{id}}",
+    none: "Noch keine Höfe erkannt",
+    noneTitle: "Noch keine Höfe",
+    noneBody:
+      "Höfe kommen aus dem Spielstand (Savegame), nicht per Hand. Sobald der Feed erreichbar ist, erscheinen sie automatisch. Namen und Konten folgen später per FTP/Connector.",
+    discovering: "Höfe werden aus dem Spielstand gelesen…",
     hectares: "Fläche",
     hectaresValue: "{{value}} ha",
     storageValue: "{{value}} %",
-    equipmentHint: "Fahrzeuge dieses Hofs",
+    equipmentHint: "Fahrzeuge auf diesem Server",
   },
   access: {
     title: "Zugriff",

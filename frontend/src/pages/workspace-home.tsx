@@ -3,6 +3,7 @@ import { Link } from "react-router-dom"
 import { useTranslation } from "react-i18next"
 import { apiWorkspaceVehicles } from "../api"
 import { EmptyState, MissingValue, MissingWorkspace, PermissionBlock, useTimeLabel } from "../components/ui"
+import { farmDisplayName } from "../farm-label"
 import { APP_MODULES } from "../modules"
 import { useStore } from "../store"
 import type { Vehicle } from "../types"
@@ -20,7 +21,16 @@ function money(value: number | null, locale: string) {
 export function WorkspaceHomePage() {
   const { t, i18n } = useTranslation()
   const stamp = useTimeLabel()
-  const { activity, liveMode, moduleAccess, selectedFarm, upsertWorkspace, vehicles } = useStore()
+  const {
+    activity,
+    liveMode,
+    moduleAccess,
+    replaceWorkspaceFarms,
+    replaceWorkspaceVehicles,
+    selectedFarm,
+    upsertWorkspace,
+    vehicles,
+  } = useStore()
   const { workspace, allowed } = useWorkspaceRoute()
   const [feedVehicles, setFeedVehicles] = useState<Vehicle[] | null>(null)
   const [feedBusy, setFeedBusy] = useState(false)
@@ -34,6 +44,8 @@ export function WorkspaceHomePage() {
         const result = await apiWorkspaceVehicles(workspace.id)
         if (cancelled) return
         setFeedVehicles(result.vehicles)
+        replaceWorkspaceVehicles(workspace.id, result.vehicles)
+        if (result.farms) replaceWorkspaceFarms(workspace.id, result.farms)
         if (result.workspace) upsertWorkspace(result.workspace)
       } catch {
         if (!cancelled) setFeedVehicles([])
@@ -78,7 +90,7 @@ export function WorkspaceHomePage() {
     )
   }
 
-  const title = farm?.name ?? workspace.name
+  const title = farm ? farmDisplayName(farm, t) : workspace.name
   const lead = farm ? t("workspace.farmLead", { server: workspace.name }) : t("workspace.lead")
 
   return (

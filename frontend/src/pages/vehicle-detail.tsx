@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next"
 import { Link, useParams } from "react-router-dom"
 import { EmptyState, MissingValue, MissingWorkspace, PermissionBlock, useTimeLabel } from "../components/ui"
+import { farmDisplayName } from "../farm-label"
 import { useStore } from "../store"
 import { useWorkspaceRoute } from "../use-workspace"
 import type { Vehicle } from "../types"
@@ -20,7 +21,8 @@ export function VehicleDetailPage() {
   const vehicle = vehicles.find((item) => item.id === vehicleId && item.workspaceId === id)
   const fill = vehicle?.fill ? (i18n.language === "en" ? vehicle.fill.en : vehicle.fill.de) : null
   const equipmentAccess = workspace ? moduleAccess(workspace.id, "equipment") : null
-  const farmName = vehicle ? farmByGameId(id, vehicle.farmId)?.name : null
+  const linkedFarm = vehicle ? farmByGameId(id, vehicle.farmId) : null
+  const farmName = linkedFarm ? farmDisplayName(linkedFarm, t) : null
   const categoryKey =
     vehicle?.category === "harvester" ? "vehicles.selfpropelled" : vehicle ? `vehicles.${vehicle.category}` : ""
 
@@ -44,7 +46,6 @@ export function VehicleDetailPage() {
     <section className="panel">
       <p className="hint">{t("vehicles.observed", { time: stamp(vehicle.observedAt, t("unavailable")) })}</p>
       <h1>{vehicle.name}</h1>
-      <span className="badge">{t("demo")}</span>
       <dl className="detail">
         <div>
           <dt>{t("vehicles.category")}</dt>

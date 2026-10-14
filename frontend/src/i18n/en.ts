@@ -38,13 +38,16 @@ export const en = {
   farm: {
     switch: "Farm",
     savegameId: "Savegame ID {{id}}",
-    none: "No farm assigned",
-    noneTitle: "No farm available",
-    noneBody: "You do not have access to a farm on this server.",
+    stubName: "Farm {{id}}",
+    none: "No farms detected yet",
+    noneTitle: "No farms yet",
+    noneBody:
+      "Farms come from the savegame, not from manual creation. They appear automatically once the feed is reachable. Names and balances follow later via FTP/connector.",
+    discovering: "Reading farms from the savegame…",
     hectares: "Area",
     hectaresValue: "{{value}} ha",
     storageValue: "{{value}} %",
-    equipmentHint: "Vehicles on this farm",
+    equipmentHint: "Vehicles on this server",
   },
   access: {
     title: "Access",

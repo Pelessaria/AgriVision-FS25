@@ -75,4 +75,11 @@ class DedicatedServerFeedClientTest extends TestCase
 
         Http::assertSentCount(1);
     }
+
+    public function test_farm_ids_from_vehicles_xml(): void
+    {
+        $xml = '<vehicles><vehicle farmId="1"/><vehicle farmId="3"/><vehicle farmId="1"/><vehicle farmId="0"/></vehicles>';
+        $ids = \App\Services\Fs25\WorkspaceFeedService::farmIdsFromVehiclesXml($xml);
+        $this->assertSame([1, 3], $ids);
+    }
 }

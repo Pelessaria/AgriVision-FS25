@@ -93,6 +93,8 @@ interface Store {
   testConnection: (id: string) => Promise<"ok" | "offline" | "unpaired" | "disabled">
   refreshWorkspaces: (options?: { sync?: boolean }) => Promise<void>
   upsertWorkspace: (workspace: Workspace) => void
+  replaceWorkspaceFarms: (workspaceId: string, farms: Farm[]) => void
+  replaceWorkspaceVehicles: (workspaceId: string, vehicles: Vehicle[]) => void
   revealCode: (id: string) => string
   hideCode: (id: string) => void
   createUser: (name: string, email: string) => string | "taken"
@@ -278,8 +280,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const initial = load()
   const [users, setUsers] = useState(initial.users)
   const [workspaces, setWorkspaces] = useState(initial.workspaces)
-  const [farms] = useState(seedFarms)
-  const [vehicles] = useState(initial.vehicles)
+  const [farms, setFarms] = useState(seedFarms)
+  const [vehicles, setVehicles] = useState(initial.vehicles)
   const [activity] = useState(initial.activity)
   const [groups, setGroups] = useState(initial.groups)
   const [mailSettings, setMailSettingsState] = useState(initial.mailSettings)
@@ -302,6 +304,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return
       }
       setLiveMode(true)
+      setFarms([])
+      setVehicles([])
       try {
         const me = await apiMe()
         if (cancelled) return
@@ -610,6 +614,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         if (index < 0) return [...current, workspace]
         return current.map((item) => (item.id === workspace.id ? workspace : item))
       })
+    },
+    replaceWorkspaceFarms: (workspaceId, next) => {
+      setFarms((current) => [...current.filter((farm) => farm.workspaceId !== workspaceId), ...next])
+    },
+    replaceWorkspaceVehicles: (workspaceId, next) => {
+      setVehicles((current) => [
+        ...current.filter((vehicle) => vehicle.workspaceId !== workspaceId),
+        ...next,
+      ])
     },
     revealCode: (id) => {
       const code = demoCode()

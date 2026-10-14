@@ -98,7 +98,8 @@ export interface Farm {
   workspaceId: string
   /** Savegame farm ID (1, 2, …). */
   gameFarmId: number
-  name: string
+  /** Null until farms.xml / connector supplies a name — UI shows a stub label. */
+  name: string | null
   money: number | null
   hectares: number | null
   animals: number | null

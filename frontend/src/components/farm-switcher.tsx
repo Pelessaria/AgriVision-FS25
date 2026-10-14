@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Check, ChevronDown } from "lucide-react"
+import { farmDisplayName } from "../farm-label"
 import type { Farm } from "../types"
 
 export function FarmSwitcher({
@@ -8,11 +9,13 @@ export function FarmSwitcher({
   farm,
   onSelect,
   collapsed,
+  discovering,
 }: {
   farms: Farm[]
   farm: Farm | null
   onSelect: (farmId: string) => void
   collapsed?: boolean
+  discovering?: boolean
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
@@ -37,10 +40,14 @@ export function FarmSwitcher({
   }, [open])
 
   if (farms.length === 0) {
-    return <p className="farm-switch-empty">{t("farm.none")}</p>
+    return (
+      <p className="farm-switch-empty">{discovering ? t("farm.discovering") : t("farm.none")}</p>
+    )
   }
 
   if (!farm) return null
+
+  const label = farmDisplayName(farm, t)
 
   return (
     <div className={open ? "farm-switch open" : "farm-switch"} ref={rootRef}>
@@ -51,7 +58,7 @@ export function FarmSwitcher({
         aria-haspopup="listbox"
         aria-expanded={open}
         disabled={!canSwitch}
-        title={collapsed ? farm.name : undefined}
+        title={collapsed ? label : undefined}
         onClick={() => {
           if (!canSwitch) return
           setOpen((value) => !value)
@@ -60,7 +67,7 @@ export function FarmSwitcher({
         <span className="ws-no">{farm.gameFarmId}</span>
         <span className="farm-switch-copy">
           <em>{t("farm.switch")}</em>
-          <strong>{farm.name}</strong>
+          <strong>{label}</strong>
         </span>
         {canSwitch ? <ChevronDown className="icon farm-switch-chevron" aria-hidden="true" /> : null}
       </button>
@@ -80,7 +87,7 @@ export function FarmSwitcher({
                 >
                   <span className="ws-no">{item.gameFarmId}</span>
                   <span className="farm-switch-option-copy">
-                    <strong>{item.name}</strong>
+                    <strong>{farmDisplayName(item, t)}</strong>
                     <span className="faint">{t("farm.savegameId", { id: item.gameFarmId })}</span>
                   </span>
                   {active ? <Check className="icon" aria-hidden="true" /> : null}

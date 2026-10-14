@@ -2,6 +2,7 @@
 
 namespace App\Services\Fs25;
 
+use App\Models\GameFarm;
 use App\Models\Workspace;
 use InvalidArgumentException;
 use RuntimeException;
@@ -84,8 +85,15 @@ final class WorkspaceFeedService
             $timeout = $light ? 4 : 20;
             $client = DedicatedServerFeedClient::fromParts($base, $code, $timeout);
             $snapshot = $light ? $client->fetchLightSnapshot() : $client->fetchSnapshot();
+            $workspace = $this->sync->apply($workspace, $snapshot);
 
-            return $this->sync->apply($workspace, $snapshot);
+            if (! $light) {
+                // Full snapshot already loaded vehicles savegame XML into counts; re-fetch for farm IDs.
+                $vehiclesXml = $client->fetchSavegame('vehicles');
+                $this->syncFarmStubs($workspace, self::farmIdsFromVehiclesXml($vehiclesXml));
+            }
+
+            return $workspace;
         } catch (Throwable $e) {
             $workspace->link_state = 'offline';
             $workspace->status_note = mb_substr($e->getMessage(), 0, 240);
@@ -97,26 +105,77 @@ final class WorkspaceFeedService
     }
 
     /**
-     * Live vehicles from stats JSON (light fetch). Empty list when host unreachable.
+     * Discover farm stubs from savegame vehicles.xml (IDs only; names via FTP/mod later).
      *
-     * @return array{ok: bool, error: string|null, fetchedAt: string|null, vehicles: list<array<string, mixed>>}
+     * @return list<array<string, mixed>>
+     */
+    public function syncFarmsFromFeed(Workspace $workspace): array
+    {
+        $base = trim((string) $workspace->feed_base_url);
+        $code = $workspace->feedCode();
+        if ($base === '' || $code === null || $code === '') {
+            return $this->serializeFarms($workspace);
+        }
+
+        try {
+            $client = DedicatedServerFeedClient::fromParts($base, $code, 8);
+            $vehiclesXml = $client->fetchSavegame('vehicles');
+            $this->syncFarmStubs($workspace, self::farmIdsFromVehiclesXml($vehiclesXml));
+        } catch (Throwable) {
+            // Keep previously known stubs when host is briefly unreachable.
+        }
+
+        return $this->serializeFarms($workspace);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listFarms(Workspace $workspace): array
+    {
+        return $this->serializeFarms($workspace);
+    }
+
+    /**
+     * Live vehicles from stats JSON + farm stub discovery from savegame.
+     *
+     * @return array{ok: bool, error: string|null, fetchedAt: string|null, vehicles: list<array<string, mixed>>, farms: list<array<string, mixed>>}
      */
     public function fetchVehicles(Workspace $workspace): array
     {
         if ($workspace->lifecycle === 'disabled') {
-            return ['ok' => false, 'error' => 'Workspace is disabled.', 'fetchedAt' => null, 'vehicles' => []];
+            return [
+                'ok' => false,
+                'error' => 'Workspace is disabled.',
+                'fetchedAt' => null,
+                'vehicles' => [],
+                'farms' => $this->serializeFarms($workspace),
+            ];
         }
 
         $base = trim((string) $workspace->feed_base_url);
         $code = $workspace->feedCode();
         if ($base === '' || $code === null || $code === '') {
-            return ['ok' => false, 'error' => 'Feed is not configured.', 'fetchedAt' => null, 'vehicles' => []];
+            return [
+                'ok' => false,
+                'error' => 'Feed is not configured.',
+                'fetchedAt' => null,
+                'vehicles' => [],
+                'farms' => [],
+            ];
         }
 
         try {
-            $client = DedicatedServerFeedClient::fromParts($base, $code, 4);
+            $client = DedicatedServerFeedClient::fromParts($base, $code, 8);
             $snapshot = $client->fetchLightSnapshot();
             $this->sync->apply($workspace, $snapshot);
+
+            try {
+                $vehiclesXml = $client->fetchSavegame('vehicles');
+                $this->syncFarmStubs($workspace, self::farmIdsFromVehiclesXml($vehiclesXml));
+            } catch (Throwable) {
+                // Positions still useful without farm stubs.
+            }
 
             $vehicles = [];
             foreach ($snapshot->vehicles as $index => $vehicle) {
@@ -125,6 +184,7 @@ final class WorkspaceFeedService
                     'workspaceId' => $workspace->public_id,
                     'name' => $vehicle['name'] ?? 'Fahrzeug',
                     'category' => self::mapVehicleCategory($vehicle['category'] ?? null, $vehicle['type'] ?? null),
+                    // Stats JSON has no farmId; savegame matching comes later.
                     'farmId' => null,
                     'iconUrl' => null,
                     'x' => $vehicle['x'] ?? null,
@@ -141,6 +201,7 @@ final class WorkspaceFeedService
                 'error' => null,
                 'fetchedAt' => $snapshot->fetchedAtUtc,
                 'vehicles' => $vehicles,
+                'farms' => $this->serializeFarms($workspace),
             ];
         } catch (Throwable $e) {
             $workspace->link_state = 'offline';
@@ -153,6 +214,7 @@ final class WorkspaceFeedService
                 'error' => $e->getMessage(),
                 'fetchedAt' => null,
                 'vehicles' => [],
+                'farms' => $this->serializeFarms($workspace),
             ];
         }
     }
@@ -168,6 +230,84 @@ final class WorkspaceFeedService
         $client = DedicatedServerFeedClient::fromParts($base, $code, 4);
 
         return $client->fetchMapJpeg($quality, $size);
+    }
+
+    /**
+     * @param  list<int>  $gameFarmIds
+     */
+    public function syncFarmStubs(Workspace $workspace, array $gameFarmIds): void
+    {
+        $ids = array_values(array_unique(array_filter(
+            $gameFarmIds,
+            static fn (mixed $id): bool => is_int($id) && $id > 0
+        )));
+
+        foreach ($ids as $gameFarmId) {
+            GameFarm::query()->firstOrCreate(
+                [
+                    'workspace_id' => $workspace->id,
+                    'game_farm_id' => $gameFarmId,
+                ],
+                [
+                    'display_name' => null,
+                    'money' => null,
+                ]
+            );
+        }
+
+        if ($ids === []) {
+            return;
+        }
+
+        // Drop auto-stubs that vanished; keep rows that already have a real name (FTP/mod).
+        GameFarm::query()
+            ->where('workspace_id', $workspace->id)
+            ->whereNull('display_name')
+            ->whereNotIn('game_farm_id', $ids)
+            ->delete();
+    }
+
+    /**
+     * @return list<int>
+     */
+    public static function farmIdsFromVehiclesXml(string $xml): array
+    {
+        if (trim($xml) === '') {
+            return [];
+        }
+
+        if (! preg_match_all('/\bfarmId="(\d+)"/i', $xml, $matches)) {
+            return [];
+        }
+
+        $ids = array_map(static fn (string $v): int => (int) $v, $matches[1]);
+
+        return array_values(array_unique(array_filter($ids, static fn (int $id): bool => $id > 0)));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function serializeFarms(Workspace $workspace): array
+    {
+        return GameFarm::query()
+            ->where('workspace_id', $workspace->id)
+            ->orderBy('game_farm_id')
+            ->get()
+            ->map(static function (GameFarm $farm) use ($workspace): array {
+                return [
+                    'id' => $workspace->public_id.'-f'.$farm->game_farm_id,
+                    'workspaceId' => $workspace->public_id,
+                    'gameFarmId' => $farm->game_farm_id,
+                    'name' => $farm->display_name,
+                    'money' => $farm->money,
+                    'hectares' => $farm->hectares,
+                    'animals' => $farm->animals,
+                    'storageFill' => $farm->storage_fill,
+                ];
+            })
+            ->values()
+            ->all();
     }
 
     private static function mapVehicleCategory(?string $category, ?string $type): string

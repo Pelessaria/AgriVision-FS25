@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { Tractor } from "lucide-react"
+import { apiWorkspaceVehicles } from "../api"
 import { EmptyState, MissingValue, MissingWorkspace, PermissionBlock, useTimeLabel } from "../components/ui"
+import { farmDisplayName } from "../farm-label"
 import { useWorkspaceRoute } from "../use-workspace"
 import { useStore } from "../store"
 import type { Vehicle, VehicleCategory } from "../types"
@@ -30,18 +32,55 @@ export function VehiclesPage() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const stamp = useTimeLabel()
-  const { vehicles, moduleAccess, selectedFarm, farmByGameId } = useStore()
+  const {
+    vehicles,
+    liveMode,
+    moduleAccess,
+    selectedFarm,
+    farmByGameId,
+    replaceWorkspaceFarms,
+    replaceWorkspaceVehicles,
+    upsertWorkspace,
+  } = useStore()
   const { id, workspace, allowed } = useWorkspaceRoute()
   const [query, setQuery] = useState("")
   const [filter, setFilter] = useState<EquipmentFilter>("all")
+  const [loading, setLoading] = useState(false)
   const equipmentAccess = workspace ? moduleAccess(workspace.id, "equipment") : null
   const farm = workspace ? selectedFarm(workspace.id) : null
+
+  useEffect(() => {
+    if (!workspace || !liveMode || !allowed || !equipmentAccess) return
+    let cancelled = false
+    setLoading(true)
+    void (async () => {
+      try {
+        const result = await apiWorkspaceVehicles(workspace.id)
+        if (cancelled) return
+        replaceWorkspaceVehicles(workspace.id, result.vehicles)
+        if (result.farms) replaceWorkspaceFarms(workspace.id, result.farms)
+        if (result.workspace) upsertWorkspace(result.workspace)
+      } catch {
+        /* keep previous */
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [workspace?.id, liveMode, allowed, equipmentAccess])
 
   const rows = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
     return vehicles
       .filter((vehicle) => vehicle.workspaceId === id)
-      .filter((vehicle) => (farm ? vehicle.farmId === farm.gameFarmId : true))
+      // Stats feed has no farmId yet — do not hide the whole list behind a farm filter.
+      .filter((vehicle) => {
+        if (!farm) return true
+        if (vehicle.farmId === null) return true
+        return vehicle.farmId === farm.gameFarmId
+      })
       .filter((vehicle) => matchesFilter(vehicle, filter))
       .filter((vehicle) => (needle ? vehicle.name.toLocaleLowerCase().includes(needle) : true))
       .sort((a, b) => a.name.localeCompare(b.name, i18n.language))
@@ -65,7 +104,7 @@ export function VehiclesPage() {
           <h1>{t("modules.equipment")}</h1>
           <p>
             {farm
-              ? t("vehicles.leadFarm", { farm: farm.name })
+              ? t("vehicles.leadFarm", { farm: farmDisplayName(farm, t) })
               : t("vehicles.lead")}
           </p>
         </div>
@@ -94,7 +133,10 @@ export function VehiclesPage() {
       </div>
 
       {rows.length === 0 ? (
-        <EmptyState title={t("vehicles.emptyTitle")} body={t("vehicles.emptyBody")} />
+        <EmptyState
+          title={t("vehicles.emptyTitle")}
+          body={loading ? t("farm.discovering") : t("vehicles.emptyBody")}
+        />
       ) : (
         <>
           <div className="table-wrap panel">
@@ -111,9 +153,12 @@ export function VehiclesPage() {
               </thead>
               <tbody>
                 {rows.map((vehicle) => {
-                  const farmName =
-                    farmByGameId(id, vehicle.farmId)?.name ??
-                    (vehicle.farmId === null ? t("unavailable") : t("vehicles.farmId", { id: vehicle.farmId }))
+                  const linked = farmByGameId(id, vehicle.farmId)
+                  const farmName = linked
+                    ? farmDisplayName(linked, t)
+                    : vehicle.farmId === null
+                      ? t("unavailable")
+                      : t("vehicles.farmId", { id: vehicle.farmId })
                   return (
                     <tr
                       key={vehicle.id}

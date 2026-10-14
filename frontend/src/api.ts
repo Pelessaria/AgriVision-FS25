@@ -1,4 +1,4 @@
-import type { AppUser, Vehicle, Workspace } from "./types"
+import type { AppUser, Farm, Vehicle, Workspace } from "./types"
 
 export class ApiError extends Error {
   status: number
@@ -128,9 +128,18 @@ export async function apiWorkspaceVehicles(
   error?: string | null
   fetchedAt?: string | null
   vehicles: Vehicle[]
+  farms: Farm[]
   workspace?: Workspace
 }> {
   return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/vehicles`)
+}
+
+export async function apiWorkspaceFarms(
+  id: string,
+  options?: { sync?: boolean },
+): Promise<{ farms: Farm[]; workspace?: Workspace }> {
+  const sync = options?.sync ? "?sync=1" : ""
+  return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/farms${sync}`)
 }
 
 /** Probe whether the Laravel API is reachable (not just Vite demo). */

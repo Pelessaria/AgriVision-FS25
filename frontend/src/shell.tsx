@@ -22,6 +22,7 @@ import {
   Wallet,
   X,
 } from "lucide-react"
+import { apiWorkspaceFarms } from "./api"
 import { FarmSwitcher } from "./components/farm-switcher"
 import { BrandMark, Toasts, useTimeLabel } from "./components/ui"
 import { seedNotifications, type AppNotification } from "./demo-notifications"
@@ -76,11 +77,14 @@ export function Shell() {
     viewUserId,
     workspaces,
     liveMode,
+    replaceWorkspaceFarms,
+    upsertWorkspace,
   } = useStore()
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("fs25.sidebar") === "collapsed")
   const [drawer, setDrawer] = useState(false)
   const [menu, setMenu] = useState<"user" | "notify" | null>(null)
   const [notifications, setNotifications] = useState<AppNotification[]>(seedNotifications)
+  const [farmsBusy, setFarmsBusy] = useState(false)
   const headerMenusRef = useRef<HTMLDivElement>(null)
 
   const workspaceId = location.pathname.match(/^\/w\/([^/]+)/)?.[1]
@@ -95,6 +99,28 @@ export function Shell() {
   useEffect(() => {
     setMenu(null)
   }, [workspaceId])
+
+  // Discover farm stubs from the savegame when opening a live workspace.
+  useEffect(() => {
+    if (!liveMode || !workspace || !workspace.feedConfigured) return
+    let cancelled = false
+    setFarmsBusy(true)
+    void (async () => {
+      try {
+        const result = await apiWorkspaceFarms(workspace.id, { sync: true })
+        if (cancelled) return
+        replaceWorkspaceFarms(workspace.id, result.farms)
+        if (result.workspace) upsertWorkspace(result.workspace)
+      } catch {
+        /* keep previous stubs */
+      } finally {
+        if (!cancelled) setFarmsBusy(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [liveMode, workspace?.id, workspace?.feedConfigured])
 
   useEffect(() => {
     localStorage.setItem("fs25.sidebar", collapsed ? "collapsed" : "open")
@@ -174,6 +200,7 @@ export function Shell() {
               farms={farms}
               farm={farm}
               collapsed={collapsed}
+              discovering={farmsBusy && farms.length === 0}
               onSelect={(farmId) => setSelectedFarm(workspace.id, farmId)}
             />
           </div>
@@ -435,7 +462,7 @@ export function Shell() {
             <div className="context-bar">
               <span className="ws-no">{workspace.number}</span>
               <strong>{workspace.name}</strong>
-              {farm ? <span className="context-farm">{farm.name}</span> : null}
+              {farm ? <span className="context-farm">{farm.name?.trim() || t("farm.stubName", { id: farm.gameFarmId })}</span> : null}
               <span className="status-line">
                 <span className={`dot ${workspace.disabled ? "unknown" : workspace.linkState}`} />
                 {workspace.disabled ? t("card.disabled") : t(`link.${workspace.linkState}`)}

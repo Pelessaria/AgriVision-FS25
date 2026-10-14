@@ -143,6 +143,20 @@ class WorkspaceController extends Controller
             'error' => $result['error'],
             'fetchedAt' => $result['fetchedAt'],
             'vehicles' => $result['vehicles'],
+            'farms' => $result['farms'],
+            'workspace' => $this->serialize($row->fresh()),
+        ]);
+    }
+
+    public function farms(Request $request, string $workspace, WorkspaceFeedService $feeds): JsonResponse
+    {
+        $row = $this->findWorkspace($workspace);
+        $farms = $request->boolean('sync')
+            ? $feeds->syncFarmsFromFeed($row)
+            : $feeds->listFarms($row);
+
+        return response()->json([
+            'farms' => $farms,
             'workspace' => $this->serialize($row->fresh()),
         ]);
     }
