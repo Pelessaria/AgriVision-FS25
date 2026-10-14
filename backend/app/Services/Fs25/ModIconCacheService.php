@@ -39,9 +39,21 @@ final class ModIconCacheService
         // Browser-safe rasters only. DDS alone must not set iconUrl (convert may have failed).
         foreach (['png', 'jpg', 'jpeg', 'webp'] as $ext) {
             $path = $dir.'/'.$safe.'.'.$ext;
-            if (is_file($path) && filesize($path) > 32) {
-                return $path;
+            if (! is_file($path) || filesize($path) <= 32) {
+                continue;
             }
+            if ($ext === 'png') {
+                $handle = fopen($path, 'rb');
+                $magic = $handle ? fread($handle, 8) : '';
+                if ($handle) {
+                    fclose($handle);
+                }
+                if ($magic !== "\x89PNG\r\n\x1a\n") {
+                    continue;
+                }
+            }
+
+            return $path;
         }
 
         return null;

@@ -159,7 +159,8 @@ final class DdsToPng
             return null;
         }
 
-        $pixels = array_fill(0, $width * $height * 4, "\0");
+        // One binary buffer. array_fill() of per-byte strings OOMs on 512²+ icons and kills the request before any further FTP.
+        $pixels = str_repeat("\0", $width * $height * 4);
         $offset = 0;
 
         for ($by = 0; $by < $blocksY; $by++) {
@@ -235,7 +236,7 @@ final class DdsToPng
             }
         }
 
-        return implode('', $pixels);
+        return $pixels;
     }
 
     /** @return array{0:int,1:int,2:int} */

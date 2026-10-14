@@ -92,8 +92,7 @@ final class ConnectorSnapshotService
                     'downloaded' => 0,
                     'converted' => 0,
                     'skipped' => 'throttled',
-                    // Unknown while throttled — FE must keep polling, not stop.
-                    'pending' => 1,
+                    'pending' => 0,
                     'errors' => 0,
                     'listed' => 0,
                     'detail' => null,
@@ -236,17 +235,21 @@ final class ConnectorSnapshotService
         $work = [];
         foreach ($jobs as $job) {
             $safeKey = preg_replace('/[^a-zA-Z0-9._-]+/', '_', $job['key']) ?? 'icon';
+            // Only a real PNG counts as done. A leftover DDS must not suppress RETR.
             if ($cache->localPath($workspace, $safeKey) !== null) {
                 continue;
             }
-            $local = $dir.'/'.$safeKey.'.'.$job['ext'];
+            $baseName = basename(str_replace('\\', '/', $job['remote']));
+            $remote = rtrim(dirname(str_replace('\\', '/', $job['remote'])), '/');
+            // Manifest paths are icons/store/<file>. Always RETR that exact file.
+            if ($baseName === '' || $baseName === '.' || $baseName === '..') {
+                continue;
+            }
             $work[] = [
                 'key' => $safeKey,
                 'ext' => $job['ext'],
-                'remote' => $job['remote'],
-                'local' => $local,
+                'remote' => ($remote !== '' && $remote !== '.' ? $remote : 'icons/store').'/'.$baseName,
                 'pngLocal' => $dir.'/'.$safeKey.'.png',
-                'hasLocal' => is_file($local) && filesize($local) > 32,
             ];
         }
 
@@ -271,38 +274,29 @@ final class ConnectorSnapshotService
 
         foreach ($batch as $job) {
             try {
-                $bytes = null;
-                if ($job['hasLocal']) {
-                    $bytes = (string) file_get_contents($job['local']);
-                } else {
-                    $bytes = $this->readIconBytes($client, $job['remote'], $job['ext']);
-                    if ($bytes === null || $bytes === '' || strlen($bytes) <= 32) {
-                        $errors++;
-                        $firstError ??= 'RETR leer/fehlgeschlagen '.$job['remote'];
-                        continue;
-                    }
-                    $writeExt = str_starts_with($bytes, 'DDS ') ? 'dds' : $job['ext'];
-                    $writePath = $dir.'/'.$job['key'].'.'.$writeExt;
-                    File::put($writePath, $bytes);
-                    $job['local'] = $writePath;
-                    $job['ext'] = $writeExt;
-                    $downloaded++;
+                $bytes = $client->read($job['remote']);
+                if ($bytes === '' || strlen($bytes) <= 32) {
+                    $errors++;
+                    $firstError ??= 'RETR leer '.$job['remote'];
+                    continue;
                 }
-
-                if ($job['ext'] === 'dds' && is_string($bytes) && $bytes !== '') {
+                $downloaded++;
+                $isDds = str_starts_with($bytes, 'DDS ') || $job['ext'] === 'dds';
+                if ($isDds) {
+                    File::put($dir.'/'.$job['key'].'.dds', $bytes);
                     $png = DdsToPng::convert($bytes);
-                    if ($png !== null) {
+                    if ($png !== null && str_starts_with($png, "\x89PNG")) {
                         File::put($job['pngLocal'], $png);
                         $converted++;
                     } else {
                         $errors++;
                         $firstError ??= 'DDS→PNG fehlgeschlagen für '.$job['key'];
                     }
-                } elseif (in_array($job['ext'], ['png', 'jpg', 'jpeg', 'webp'], true) && is_string($bytes) && $bytes !== '') {
-                    if ($job['ext'] === 'png') {
+                } else {
+                    $writeExt = in_array($job['ext'], ['png', 'jpg', 'jpeg', 'webp'], true) ? $job['ext'] : 'png';
+                    File::put($dir.'/'.$job['key'].'.'.$writeExt, $bytes);
+                    if ($writeExt === 'png') {
                         File::put($job['pngLocal'], $bytes);
-                    } else {
-                        // Non-PNG rasters: keep as downloaded file; localPath already accepts jpg/webp.
                     }
                     $converted++;
                 }
@@ -344,34 +338,6 @@ final class ConnectorSnapshotService
             'listed' => $listed,
             'detail' => $firstError,
         ];
-    }
-
-    /**
-     * RETR icon; if .dds missing try .png (and vice versa).
-     */
-    private function readIconBytes(HostFileClient $client, string $remote, string $ext): ?string
-    {
-        $candidates = [$remote];
-        $base = preg_replace('/\.[^.]+$/', '', $remote) ?? $remote;
-        foreach (['dds', 'png', 'jpg', 'jpeg'] as $alt) {
-            if ($alt === $ext) {
-                continue;
-            }
-            $candidates[] = $base.'.'.$alt;
-        }
-
-        foreach ($candidates as $path) {
-            try {
-                $bytes = $client->read($path);
-                if (is_string($bytes) && strlen($bytes) > 32) {
-                    return $bytes;
-                }
-            } catch (Throwable) {
-                // try next extension
-            }
-        }
-
-        return null;
     }
 
     /**

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
 import { Tractor } from "lucide-react"
-import { apiWorkspaceSyncIcons, apiWorkspaceVehicles } from "../api"
+import { apiWorkspaceVehicles } from "../api"
 import { EmptyState, MissingValue, MissingWorkspace, PermissionBlock, useTimeLabel } from "../components/ui"
 import { farmDisplayName } from "../farm-label"
 import { useWorkspaceRoute } from "../use-workspace"
@@ -52,81 +52,26 @@ export function VehiclesPage() {
   useEffect(() => {
     if (!workspace || !liveMode || !allowed || !equipmentAccess) return
     let cancelled = false
-    let pollTimer: ReturnType<typeof setTimeout> | undefined
 
     const refreshVehicles = async (showSpinner: boolean) => {
       if (showSpinner) setLoading(true)
       try {
         const result = await apiWorkspaceVehicles(workspace.id)
-        if (cancelled) return result
+        if (cancelled) return
         replaceWorkspaceVehicles(workspace.id, result.vehicles)
         if (result.farms) replaceWorkspaceFarms(workspace.id, result.farms)
         if (result.workspace) upsertWorkspace(result.workspace)
-        return result
       } catch {
-        return null
+        // keep last list
       } finally {
         if (!cancelled && showSpinner) setLoading(false)
       }
     }
 
-    const pullIcons = async () => {
-      let passes = 0
-      while (!cancelled && passes < 24) {
-        try {
-          const sync = await apiWorkspaceSyncIcons(workspace.id)
-          if (cancelled) return
-          const pending = sync.iconSync?.pending ?? 0
-          const downloaded = sync.iconSync?.downloaded ?? 0
-          const converted = sync.iconSync?.converted ?? 0
-          const errors = sync.iconSync?.errors ?? 0
-          const skipped = sync.iconSync?.skipped ?? null
-          if (downloaded > 0 || converted > 0) {
-            await refreshVehicles(false)
-          }
-          if (skipped === "throttled") {
-            pollTimer = setTimeout(() => {
-              void pullIcons()
-            }, 4_000)
-            return
-          }
-          // Manifest/host hiccup — retry; do not give up after one empty pass.
-          if (skipped === "no_icons" || skipped === "manifest_failed" || skipped === "connect_failed") {
-            pollTimer = setTimeout(() => {
-              void pullIcons()
-            }, 12_000)
-            return
-          }
-          if (pending <= 0) return
-          if (downloaded === 0 && converted === 0 && errors > 0) {
-            pollTimer = setTimeout(() => {
-              void pullIcons()
-            }, 10_000)
-            return
-          }
-          passes += 1
-        } catch {
-          pollTimer = setTimeout(() => {
-            void pullIcons()
-          }, 15_000)
-          return
-        }
-      }
-    }
-
-    void (async () => {
-      const result = await refreshVehicles(true)
-      if (cancelled || !result) return
-      // Backend already RETRs a batch during /vehicles; keep pulling until pending=0.
-      const pending = result.iconSync?.pending ?? 1
-      if (pending > 0 || result.vehicles.some((vehicle) => !vehicle.iconUrl)) {
-        void pullIcons()
-      }
-    })()
+    void refreshVehicles(true)
 
     return () => {
       cancelled = true
-      if (pollTimer) clearTimeout(pollTimer)
     }
   }, [workspace?.id, liveMode, allowed, equipmentAccess])
 
