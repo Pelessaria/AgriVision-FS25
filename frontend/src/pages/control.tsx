@@ -72,6 +72,8 @@ export function ControlPage() {
 
   const accessible = store.accessibleWorkspaces
   const canCreate = store.canCreateWorkspace()
+  const liveMode = store.liveMode
+  const ready = store.ready
 
   const visible = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase()
@@ -87,11 +89,11 @@ export function ControlPage() {
     return items
   }, [accessible, filter, i18n.language, query, sort])
 
-  async function refresh() {
+  async function refresh(syncFeeds = false) {
     setPhase("loading")
     try {
-      if (store.liveMode) {
-        await store.refreshWorkspaces()
+      if (liveMode) {
+        await store.refreshWorkspaces({ sync: syncFeeds })
       } else {
         await new Promise((resolve) => window.setTimeout(resolve, 400))
       }
@@ -101,6 +103,12 @@ export function ControlPage() {
       setPhase("error")
     }
   }
+
+  // Pull live feed stats when opening the instance list (not only after "Verbindung prüfen").
+  useEffect(() => {
+    if (!ready || !liveMode) return
+    void refresh(true)
+  }, [ready, liveMode])
 
   async function testConnection(id: string) {
     setMenuId(null)
@@ -131,7 +139,7 @@ export function ControlPage() {
           <p>{t("control.lead")}</p>
         </div>
         <div className="toolbar">
-          <button type="button" className="btn btn-secondary" onClick={refresh} disabled={phase === "loading"}>
+          <button type="button" className="btn btn-secondary" onClick={() => void refresh(true)} disabled={phase === "loading"}>
             {phase === "loading" ? <LoaderCircle className="icon spin" /> : null}
             {phase === "loading" ? t("control.refreshing") : t("control.refresh")}
           </button>
@@ -184,7 +192,7 @@ export function ControlPage() {
           title={t("control.errorTitle")}
           body={t("control.errorBody")}
           action={
-            <button type="button" className="btn btn-primary" onClick={refresh}>
+            <button type="button" className="btn btn-primary" onClick={() => void refresh(true)}>
               {t("control.retry")}
             </button>
           }

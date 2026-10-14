@@ -60,4 +60,41 @@ class FeedSnapshotTest extends TestCase
         $this->assertSame('12345', $snapshot->careerMoney);
         $this->assertArrayNotHasKey('code', $snapshot->toArray());
     }
+
+    public function test_slots_from_attributes_and_slot_flags(): void
+    {
+        $stats = [
+            'server' => [
+                '@attributes' => [
+                    'name' => 'Attr Server',
+                    'mapName' => 'Map',
+                    'version' => '1.24.0.0',
+                ],
+            ],
+            'Slots' => [
+                '@attributes' => [
+                    'capacity' => '10',
+                    'numUsed' => '0',
+                ],
+                'Slot' => [
+                    ['@attributes' => ['isUsed' => 'false']],
+                    ['@attributes' => ['isUsed' => 'false']],
+                ],
+            ],
+        ];
+
+        $snapshot = FeedSnapshot::fromRaw(
+            baseUrl: 'https://example.test:8080',
+            fetchedAtUtc: '2026-10-14T00:00:00Z',
+            statsJson: $stats,
+            careerXml: '',
+            vehiclesXml: '',
+            economyXml: '',
+        );
+
+        $this->assertSame('Attr Server', $snapshot->serverName);
+        $this->assertSame(0, $snapshot->playersOnline);
+        $this->assertSame(10, $snapshot->playerCapacity);
+        $this->assertSame('1.24.0.0', $snapshot->gameVersion);
+    }
 }

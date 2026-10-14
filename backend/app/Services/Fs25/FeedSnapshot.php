@@ -44,7 +44,12 @@ final class FeedSnapshot
         string $economyXml,
     ): self {
         $server = is_array($statsJson['server'] ?? null) ? $statsJson['server'] : [];
-        $slots = is_array($statsJson['Slots'] ?? null) ? $statsJson['Slots'] : (is_array($statsJson['slots'] ?? null) ? $statsJson['slots'] : []);
+        $server = self::flattenAttrs($server);
+        $slots = self::normalizeSlots(
+            is_array($statsJson['Slots'] ?? null)
+                ? $statsJson['Slots']
+                : (is_array($statsJson['slots'] ?? null) ? $statsJson['slots'] : [])
+        );
         $modsRaw = $statsJson['Mods']['Mod'] ?? $statsJson['mods']['Mod'] ?? $statsJson['Mods'] ?? [];
         if (isset($modsRaw['name']) || isset($modsRaw['@attributes'])) {
             $modsRaw = [$modsRaw];
@@ -94,6 +99,9 @@ final class FeedSnapshot
 
         $capacity = self::int($slots['capacity'] ?? $server['capacity'] ?? null);
         $numUsed = self::int($slots['numUsed'] ?? $server['numUsed'] ?? null);
+        if ($numUsed === null && isset($slots['usedCount'])) {
+            $numUsed = self::int($slots['usedCount']);
+        }
 
         $saveVehicleCount = 0;
         if ($vehiclesXml !== '' && preg_match_all('/<vehicle\b/i', $vehiclesXml, $m)) {
@@ -154,6 +162,67 @@ final class FeedSnapshot
             'economyFillTypes' => $this->economyFillTypes,
             'mods' => $this->mods,
             'vehicles' => $this->vehicles,
+        ];
+    }
+
+    /**
+     * Giants JSON often nests XML attributes under @attributes.
+     *
+     * @param  array<string, mixed>  $node
+     * @return array<string, mixed>
+     */
+    private static function flattenAttrs(array $node): array
+    {
+        $attrs = is_array($node['@attributes'] ?? null) ? $node['@attributes'] : [];
+        $flat = $node;
+        foreach ($attrs as $key => $value) {
+            if (! array_key_exists($key, $flat) || $flat[$key] === null || $flat[$key] === '') {
+                $flat[$key] = $value;
+            }
+        }
+
+        return $flat;
+    }
+
+    /**
+     * @param  array<string, mixed>  $slots
+     * @return array{capacity: int|null, numUsed: int|null, usedCount?: int}
+     */
+    private static function normalizeSlots(array $slots): array
+    {
+        $flat = self::flattenAttrs($slots);
+        $capacity = self::int($flat['capacity'] ?? null);
+        $numUsed = self::int($flat['numUsed'] ?? $flat['num_used'] ?? null);
+
+        $slotRaw = $flat['Slot'] ?? $flat['slot'] ?? null;
+        if ($slotRaw !== null) {
+            if (isset($slotRaw['isUsed']) || isset($slotRaw['@attributes']) || isset($slotRaw['name'])) {
+                $slotRaw = [$slotRaw];
+            }
+            if (is_array($slotRaw)) {
+                if ($capacity === null) {
+                    $capacity = count($slotRaw);
+                }
+                if ($numUsed === null) {
+                    $used = 0;
+                    foreach ($slotRaw as $slot) {
+                        if (! is_array($slot)) {
+                            continue;
+                        }
+                        $slot = self::flattenAttrs($slot);
+                        $flag = $slot['isUsed'] ?? $slot['used'] ?? null;
+                        if ($flag === true || $flag === 1 || $flag === '1' || $flag === 'true' || $flag === 'True') {
+                            $used++;
+                        }
+                    }
+                    $numUsed = $used;
+                }
+            }
+        }
+
+        return [
+            'capacity' => $capacity,
+            'numUsed' => $numUsed,
         ];
     }
 

@@ -91,7 +91,7 @@ interface Store {
   setFeedUrl: (id: string, feedUrl: string) => Promise<{ ok: boolean; error?: string }>
   setDisabled: (id: string, disabled: boolean) => Promise<void>
   testConnection: (id: string) => Promise<"ok" | "offline" | "unpaired" | "disabled">
-  refreshWorkspaces: () => Promise<void>
+  refreshWorkspaces: (options?: { sync?: boolean }) => Promise<void>
   revealCode: (id: string) => string
   hideCode: (id: string) => void
   createUser: (name: string, email: string) => string | "taken"
@@ -582,9 +582,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       )
       return "ok"
     },
-    refreshWorkspaces: async () => {
+    refreshWorkspaces: async (options) => {
       if (!liveMode) return
-      const list = await apiWorkspaces()
+      let list = await apiWorkspaces()
+      if (options?.sync) {
+        for (const workspace of list) {
+          if (workspace.disabled || !workspace.feedConfigured) continue
+          try {
+            const result = await apiSyncWorkspace(workspace.id)
+            list = list.map((item) => (item.id === workspace.id ? result.workspace : item))
+          } catch {
+            // Keep previous row; next workspace still syncs.
+          }
+        }
+        list = await apiWorkspaces()
+      }
       setWorkspaces(list)
     },
     revealCode: (id) => {
