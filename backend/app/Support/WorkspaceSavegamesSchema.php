@@ -42,8 +42,12 @@ final class WorkspaceSavegamesSchema
             });
         }
 
-        self::ensureForeignKey();
+        // MariaDB may back the workspace_id FK with the composite unique
+        // (workspace_id, game_farm_id). Add a dedicated index before dropping it.
+        self::ensurePlainIndex('game_farms', 'game_farms_workspace_id_index', ['workspace_id']);
         self::dropIndexIfExists('game_farms', 'game_farms_workspace_id_game_farm_id_unique');
+
+        self::ensureForeignKey();
         self::ensureUnique('game_farms', 'game_farms_workspace_savegame_id_game_farm_id_unique', [
             'workspace_savegame_id',
             'game_farm_id',
@@ -76,6 +80,52 @@ final class WorkspaceSavegamesSchema
         Schema::table($table, function (Blueprint $blueprint) use ($columns, $indexName) {
             $blueprint->unique($columns, $indexName);
         });
+    }
+
+    /**
+     * @param  list<string>  $columns
+     */
+    private static function ensurePlainIndex(string $table, string $indexName, array $columns): void
+    {
+        if (self::indexExists($table, $indexName)) {
+            return;
+        }
+
+        // Another single-column index on the same column is enough (e.g. FK index).
+        if (count($columns) === 1 && self::hasSingleColumnIndex($table, $columns[0])) {
+            return;
+        }
+
+        Schema::table($table, function (Blueprint $blueprint) use ($columns, $indexName) {
+            $blueprint->index($columns, $indexName);
+        });
+    }
+
+    private static function hasSingleColumnIndex(string $table, string $column): bool
+    {
+        $driver = Schema::getConnection()->getDriverName();
+        if (! in_array($driver, ['mysql', 'mariadb'], true)) {
+            return false;
+        }
+
+        // Load full index definitions — filtering by column alone mis-detects
+        // composite uniques that only lead with $column (MariaDB FK 1553).
+        $rows = DB::select('SHOW INDEX FROM `'.$table.'`');
+        $byKey = [];
+        foreach ($rows as $row) {
+            $name = (string) ($row->Key_name ?? '');
+            $seq = (int) ($row->Seq_in_index ?? 0);
+            $col = (string) ($row->Column_name ?? '');
+            $byKey[$name][$seq] = $col;
+        }
+        foreach ($byKey as $cols) {
+            ksort($cols);
+            if (count($cols) === 1 && reset($cols) === $column) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static function dropIndexIfExists(string $table, string $indexName): void

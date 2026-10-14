@@ -4,6 +4,7 @@ import { Camera, CheckCircle2, CircleAlert, LoaderCircle, RefreshCw, ShieldCheck
 import {
   applyUpdate,
   checkForUpdates,
+  fetchUpdateLog,
   formatSha,
   GITHUB_REPO_URL,
   type UpdateStatus,
@@ -15,6 +16,71 @@ import { isEmail } from "../validate"
 import { MANAGEMENT_VERSION } from "../version"
 
 type SettingsTab = "profile" | "general" | "update" | "mail"
+
+function UpdateLogPanel({
+  initialLines,
+  onToast,
+}: {
+  initialLines: string[]
+  onToast: (tone: "ok" | "warn" | "danger", text: string) => void
+}) {
+  const { t } = useTranslation()
+  const [lines, setLines] = useState(initialLines)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    setLines(initialLines)
+  }, [initialLines])
+
+  async function refresh() {
+    setBusy(true)
+    try {
+      const result = await fetchUpdateLog()
+      setLines(result.lines)
+    } catch {
+      onToast("warn", t("settings.updateLogFailed"))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const text = lines.join("\n")
+
+  return (
+    <div className="update-log-panel">
+      <div className="field-label-row">
+        <h3>{t("settings.updateLogTitle")}</h3>
+        <div className="setting-actions">
+          <button type="button" className="btn btn-ghost btn-small" disabled={busy} onClick={() => void refresh()}>
+            {busy ? <LoaderCircle className="icon spin" /> : null}
+            {t("settings.updateLogRefresh")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost btn-small"
+            disabled={text === ""}
+            onClick={() => {
+              void navigator.clipboard.writeText(text).then(
+                () => onToast("ok", t("settings.updateLogCopied")),
+                () => onToast("warn", t("create.copyFailed")),
+              )
+            }}
+          >
+            {t("settings.updateLogCopy")}
+          </button>
+        </div>
+      </div>
+      <p className="hint">{t("settings.updateLogHint")}</p>
+      {lines.length === 0 ? (
+        <p className="muted">{t("settings.updateLogEmpty")}</p>
+      ) : (
+        <pre className="update-log-pre" tabIndex={0}>
+          {text}
+        </pre>
+      )}
+    </div>
+  )
+}
 
 function chooseLocale(lng: "de" | "en") {
   void i18n.changeLanguage(lng)
@@ -647,6 +713,11 @@ export function SettingsPage() {
               </div>
             )
           })()}
+
+          <UpdateLogPanel
+            initialLines={updateStatus?.updateLog ?? []}
+            onToast={(tone, text) => store.pushToast(tone, text)}
+          />
         </section>
       ) : null}
 

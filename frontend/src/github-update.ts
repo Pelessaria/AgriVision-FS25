@@ -24,6 +24,7 @@ export type UpdateStatus = {
   lastError?: string | null
   lastErrorAt?: string | null
   migrationError?: string | null
+  updateLog?: string[]
 }
 
 function shortSha(sha: string | null | undefined) {
@@ -163,4 +164,8 @@ export async function applyUpdate(
 
 export function formatSha(sha: string | null | undefined) {
   return shortSha(sha) ?? "—"
+}
+
+export async function fetchUpdateLog(): Promise<{ lines: string[]; path: string }> {
+  return apiFetch("/api/system/update/log")
 }

@@ -36,6 +36,20 @@ class SystemUpdateController extends Controller
         }
     }
 
+    public function log(Request $request, GithubUpdateService $updates): JsonResponse
+    {
+        if (! $this->isAdmin($request)) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        $lines = $updates->readUpdateLog(120);
+
+        return response()->json([
+            'lines' => $lines,
+            'path' => 'storage/logs/agrivision-update.log',
+        ]);
+    }
+
     public function apply(Request $request, GithubUpdateService $updates): JsonResponse
     {
         if (! $this->isAdmin($request)) {

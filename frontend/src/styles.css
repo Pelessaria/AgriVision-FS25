@@ -1428,6 +1428,37 @@ h1.title-with-no { display: flex; }
   color: var(--accent);
   white-space: nowrap;
 }
+.update-log-panel {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.update-log-panel .field-label-row {
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+.update-log-panel h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.update-log-pre {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 88%, #000);
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .settings-grid > .settings-card { align-self: stretch; }
 .settings-card h2, .settings-hero h2 {
   font-size: 1.05rem;

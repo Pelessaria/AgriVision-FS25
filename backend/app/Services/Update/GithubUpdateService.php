@@ -73,7 +73,33 @@ final class GithubUpdateService
             'lastError' => isset($state['lastError']) ? (string) $state['lastError'] : null,
             'lastErrorAt' => isset($state['lastErrorAt']) ? (string) $state['lastErrorAt'] : null,
             'migrationError' => isset($state['migrationError']) ? (string) $state['migrationError'] : null,
+            'updateLog' => $this->readUpdateLog(80),
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function readUpdateLog(int $maxLines = 80): array
+    {
+        $path = storage_path('logs/'.self::LOG_FILE);
+        if (! File::exists($path)) {
+            return [];
+        }
+
+        try {
+            $raw = (string) File::get($path);
+        } catch (Throwable) {
+            return [];
+        }
+
+        $lines = preg_split('/\r\n|\n|\r/', $raw) ?: [];
+        $lines = array_values(array_filter($lines, static fn (string $line): bool => trim($line) !== ''));
+        if (count($lines) <= $maxLines) {
+            return $lines;
+        }
+
+        return array_slice($lines, -$maxLines);
     }
 
     /**
