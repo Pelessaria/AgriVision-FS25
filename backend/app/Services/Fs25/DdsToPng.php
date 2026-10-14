@@ -22,18 +22,35 @@ final class DdsToPng
         $pfFlags = unpack('V', substr($ddsBytes, 80, 4))[1] ?? 0;
         $fourCc = substr($ddsBytes, 84, 4);
         $rgbBitCount = unpack('V', substr($ddsBytes, 88, 4))[1] ?? 0;
-        $data = substr($ddsBytes, 128);
 
         $rgba = null;
-        if (($pfFlags & 0x4) !== 0) {
-            $rgba = match ($fourCc) {
-                'DXT1' => self::decodeDxt1($data, $width, $height),
-                'DXT3' => self::decodeDxt3($data, $width, $height),
-                'DXT5' => self::decodeDxt5($data, $width, $height),
+        if ($fourCc === 'DX10') {
+            // FS25 store icons are DX10/BC3: 128-byte DDS header + 20-byte DX10 header.
+            // 512² BC3 is exactly 262144 bytes, file size 262292.
+            if (strlen($ddsBytes) < 148) {
+                return null;
+            }
+            $dxgi = unpack('V', substr($ddsBytes, 128, 4))[1] ?? 0;
+            $data = substr($ddsBytes, 148);
+            $rgba = match ($dxgi) {
+                71, 72 => self::decodeDxt1($data, $width, $height),
+                74, 75 => self::decodeDxt3($data, $width, $height),
+                77, 78 => self::decodeDxt5($data, $width, $height),
+                87, 91 => self::decodeBgra($data, $width, $height),
                 default => null,
             };
-        } elseif ($rgbBitCount === 32) {
-            $rgba = self::decodeBgra($data, $width, $height);
+        } else {
+            $data = substr($ddsBytes, 128);
+            if (($pfFlags & 0x4) !== 0) {
+                $rgba = match ($fourCc) {
+                    'DXT1', 'BC1 ' => self::decodeDxt1($data, $width, $height),
+                    'DXT3', 'BC2 ' => self::decodeDxt3($data, $width, $height),
+                    'DXT5', 'BC3 ' => self::decodeDxt5($data, $width, $height),
+                    default => null,
+                };
+            } elseif ($rgbBitCount === 32) {
+                $rgba = self::decodeBgra($data, $width, $height);
+            }
         }
 
         if ($rgba === null) {

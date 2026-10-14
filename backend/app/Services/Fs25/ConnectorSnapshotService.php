@@ -22,8 +22,14 @@ final class ConnectorSnapshotService
     /** Minimum seconds between icon FTP syncs per workspace. */
     public const ICON_SYNC_INTERVAL_SEC = 3;
 
-    /** Max missing icons to fetch/convert per sync pass (kept small for vehicles request). */
+    /** Max missing icons to fetch/convert per sync pass. */
     public const ICON_SYNC_BATCH = 8;
+
+    /** Seconds to wait before retrying a DDS that did not become a PNG. */
+    private const CONVERT_COOLDOWN_SEC = 120;
+
+    /** @var resource|null */
+    private static $iconLock = null;
 
     /**
      * @return array{
@@ -124,6 +130,22 @@ final class ConnectorSnapshotService
             @ignore_user_abort(true);
         }
 
+        if (! $this->acquireIconLock()) {
+            return $this->syncResult(skipped: 'busy', pending: 1, detail: 'Icon-Sync läuft bereits');
+        }
+
+        try {
+            return $this->syncStoreIconsLocked($workspace);
+        } finally {
+            $this->releaseIconLock();
+        }
+    }
+
+    /**
+     * @return array{downloaded: int, converted: int, skipped: string|null, pending: int, errors: int, listed: int, detail: string|null}
+     */
+    private function syncStoreIconsLocked(Workspace $workspace): array
+    {
         $access = $this->hostAccess($workspace);
         if ($access === null) {
             return $this->syncResult(skipped: 'no_host_access', detail: 'HostAccess fehlt oder ohne Passwort');
@@ -232,16 +254,21 @@ final class ConnectorSnapshotService
         $dir = $cache->cacheDir($workspace);
         File::ensureDirectoryExists($dir);
 
+        $cooldown = $this->readConvertCooldown($dir);
+        $now = time();
         $work = [];
+        $cooling = 0;
         foreach ($jobs as $job) {
             $safeKey = preg_replace('/[^a-zA-Z0-9._-]+/', '_', $job['key']) ?? 'icon';
-            // Only a real PNG counts as done. A leftover DDS must not suppress RETR.
             if ($cache->localPath($workspace, $safeKey) !== null) {
+                continue;
+            }
+            if (($cooldown[$safeKey] ?? 0) > $now) {
+                $cooling++;
                 continue;
             }
             $baseName = basename(str_replace('\\', '/', $job['remote']));
             $remote = rtrim(dirname(str_replace('\\', '/', $job['remote'])), '/');
-            // Manifest paths are icons/store/<file>. Always RETR that exact file.
             if ($baseName === '' || $baseName === '.' || $baseName === '..') {
                 continue;
             }
@@ -255,7 +282,12 @@ final class ConnectorSnapshotService
 
         $listed = count($jobs);
         if ($work === []) {
-            return $this->syncResult(listed: $listed, detail: 'alle Icons bereits als PNG vorhanden');
+            return $this->syncResult(
+                pending: $cooling,
+                listed: $listed,
+                skipped: $cooling > 0 ? 'convert_cooldown' : null,
+                detail: $cooling > 0 ? 'DDS liegt lokal, Konvertierung pausiert' : 'alle Icons bereits als PNG vorhanden'
+            );
         }
 
         $downloaded = 0;
@@ -274,22 +306,40 @@ final class ConnectorSnapshotService
 
         foreach ($batch as $job) {
             try {
-                $bytes = $client->read($job['remote']);
+                $ddsLocal = $dir.'/'.$job['key'].'.dds';
+                $bytes = null;
+                $fetched = false;
+                if ($job['ext'] === 'dds' && is_file($ddsLocal) && filesize($ddsLocal) > 128) {
+                    $cached = file_get_contents($ddsLocal);
+                    if (is_string($cached) && strlen($cached) > 128) {
+                        $bytes = $cached;
+                    }
+                }
+                if ($bytes === null) {
+                    $bytes = $client->read($job['remote']);
+                    $fetched = true;
+                }
                 if ($bytes === '' || strlen($bytes) <= 32) {
                     $errors++;
                     $firstError ??= 'RETR leer '.$job['remote'];
                     continue;
                 }
-                $downloaded++;
+                if ($fetched) {
+                    $downloaded++;
+                }
                 $isDds = str_starts_with($bytes, 'DDS ') || $job['ext'] === 'dds';
                 if ($isDds) {
-                    File::put($dir.'/'.$job['key'].'.dds', $bytes);
+                    if ($fetched) {
+                        File::put($ddsLocal, $bytes);
+                    }
                     $png = DdsToPng::convert($bytes);
                     if ($png !== null && str_starts_with($png, "\x89PNG")) {
                         File::put($job['pngLocal'], $png);
+                        unset($cooldown[$job['key']]);
                         $converted++;
                     } else {
                         $errors++;
+                        $cooldown[$job['key']] = time() + self::CONVERT_COOLDOWN_SEC;
                         $firstError ??= 'DDS→PNG fehlgeschlagen für '.$job['key'];
                     }
                 } else {
@@ -318,6 +368,8 @@ final class ConnectorSnapshotService
                 $stillPending++;
             }
         }
+
+        $this->writeConvertCooldown($dir, $cooldown);
 
         Log::info('AgriVision icon sync pass', [
             'workspace' => $workspace->public_id,
@@ -361,6 +413,86 @@ final class ConnectorSnapshotService
             'listed' => $listed,
             'detail' => $detail,
         ];
+    }
+
+    private function acquireIconLock(): bool
+    {
+        if (is_resource(self::$iconLock)) {
+            return true;
+        }
+        $path = storage_path('app/connector/icon-sync.lock');
+        File::ensureDirectoryExists(dirname($path));
+        $handle = fopen($path, 'c+');
+        if ($handle === false) {
+            return false;
+        }
+        if (! flock($handle, LOCK_EX | LOCK_NB)) {
+            fclose($handle);
+
+            return false;
+        }
+        self::$iconLock = $handle;
+
+        return true;
+    }
+
+    private function releaseIconLock(): void
+    {
+        if (! is_resource(self::$iconLock)) {
+            self::$iconLock = null;
+
+            return;
+        }
+        flock(self::$iconLock, LOCK_UN);
+        fclose(self::$iconLock);
+        self::$iconLock = null;
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function readConvertCooldown(string $dir): array
+    {
+        $path = $dir.'/.convert-cooldown.json';
+        if (! is_file($path)) {
+            return [];
+        }
+        $decoded = json_decode((string) file_get_contents($path), true);
+        if (! is_array($decoded)) {
+            return [];
+        }
+        $now = time();
+        $out = [];
+        foreach ($decoded as $key => $until) {
+            if (is_string($key) && is_int($until) && $until > $now) {
+                $out[$key] = $until;
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, int>  $cooldown
+     */
+    private function writeConvertCooldown(string $dir, array $cooldown): void
+    {
+        $path = $dir.'/.convert-cooldown.json';
+        $now = time();
+        $keep = [];
+        foreach ($cooldown as $key => $until) {
+            if (is_string($key) && is_int($until) && $until > $now) {
+                $keep[$key] = $until;
+            }
+        }
+        if ($keep === []) {
+            if (is_file($path)) {
+                File::delete($path);
+            }
+
+            return;
+        }
+        File::put($path, json_encode($keep));
     }
 
     private function hostAccess(Workspace $workspace): ?HostAccess

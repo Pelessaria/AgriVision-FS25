@@ -29,4 +29,21 @@ final class DdsToPngTest extends TestCase
         $this->assertSame("\x89PNG\r\n\x1a\n", substr((string) $png, 0, 8));
         $this->assertGreaterThan(64, strlen((string) $png));
     }
+
+    public function test_converts_dx10_bc3_block(): void
+    {
+        $width = 4;
+        $height = 4;
+        $header = str_repeat("\0", 148);
+        $header = substr_replace($header, 'DDS ', 0, 4);
+        $header = substr_replace($header, pack('V', $height), 12, 4);
+        $header = substr_replace($header, pack('V', $width), 16, 4);
+        $header = substr_replace($header, pack('V', 0x4), 80, 4);
+        $header = substr_replace($header, 'DX10', 84, 4);
+        $header = substr_replace($header, pack('V', 77), 128, 4); // DXGI_FORMAT_BC3_UNORM
+
+        $png = DdsToPng::convert($header.str_repeat("\0", 16));
+        $this->assertNotNull($png);
+        $this->assertSame("\x89PNG\r\n\x1a\n", substr((string) $png, 0, 8));
+    }
 }

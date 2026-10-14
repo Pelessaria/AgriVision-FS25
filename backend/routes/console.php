@@ -16,11 +16,13 @@ Artisan::command('agrivision:sync-store-icons {--daemon : Keep pulling icons unt
         $this->info('icon daemon '.getmypid());
     }
 
-    $run = function () use ($icons): int {
+    $run = function (int $interval) use ($icons): array {
         $pending = 0;
+        $moved = 0;
         foreach (Workspace::query()->cursor() as $workspace) {
-            $result = $icons->syncStoreIconsIfDue($workspace, $this->option('daemon') ? 8 : 20);
+            $result = $icons->syncStoreIconsIfDue($workspace, $interval);
             $pending += (int) $result['pending'];
+            $moved += (int) $result['downloaded'] + (int) $result['converted'];
             $this->line(sprintf(
                 '%s downloaded=%d converted=%d pending=%d listed=%d skipped=%s detail=%s',
                 $workspace->public_id,
@@ -31,13 +33,19 @@ Artisan::command('agrivision:sync-store-icons {--daemon : Keep pulling icons unt
                 $result['skipped'] ?? '-',
                 $result['detail'] ?? '-'
             ));
+            if (($result['skipped'] ?? null) === 'busy') {
+                return ['pending' => $pending, 'moved' => 0];
+            }
         }
 
-        return $pending;
+        return ['pending' => $pending, 'moved' => $moved];
     };
 
     if (! $this->option('daemon')) {
-        $run();
+        $deadline = time() + 50;
+        do {
+            $pass = $run(0);
+        } while ($pass['pending'] > 0 && $pass['moved'] > 0 && time() < $deadline);
 
         return;
     }
@@ -45,7 +53,8 @@ Artisan::command('agrivision:sync-store-icons {--daemon : Keep pulling icons unt
     while (true) {
         $pending = 0;
         try {
-            $pending = $run();
+            $pass = $run(8);
+            $pending = $pass['pending'];
         } catch (Throwable $e) {
             $this->error($e->getMessage());
         }
