@@ -360,6 +360,11 @@ export const de = {
     updateBackendMissing: "Backend nicht erreichbar — Update-Prüfung über GitHub. Installation erst auf dem Webspace.",
     updateFailed: "Update fehlgeschlagen: {{error}}",
     updateCheckFailed: "Prüfung fehlgeschlagen: {{error}}",
+    updateLastErrorTitle: "Letzter Update-/Migrationsfehler",
+    updateLastErrorHint:
+      "Fehlertext kopieren und an den Support schicken. Server-Log: storage/logs/agrivision-update.log",
+    updateErrorCopy: "Fehlertext kopieren",
+    updateErrorCopied: "Fehlertext kopiert.",
     updateConfirm: "Dateien aus GitHub überschreiben und Migrationen ausführen? .env und storage bleiben erhalten.",
     updateOpenRepo: "Repository öffnen",
     updateSourceApi: "Status vom Webspace",

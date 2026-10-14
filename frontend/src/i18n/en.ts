@@ -362,6 +362,11 @@ export const en = {
     updateBackendMissing: "Backend unreachable — checked GitHub only. Install updates on the web host.",
     updateFailed: "Update failed: {{error}}",
     updateCheckFailed: "Check failed: {{error}}",
+    updateLastErrorTitle: "Last update/migration error",
+    updateLastErrorHint:
+      "Copy the error text for support. Server log: storage/logs/agrivision-update.log",
+    updateErrorCopy: "Copy error text",
+    updateErrorCopied: "Error text copied.",
     updateConfirm: "Overwrite application files from GitHub and run migrations? .env and storage are kept.",
     updateOpenRepo: "Open repository",
     updateSourceApi: "Status from web host",

@@ -60,6 +60,7 @@ export function SettingsPage() {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null)
   const [updateChecking, setUpdateChecking] = useState(false)
   const [updateApplying, setUpdateApplying] = useState(false)
+  const [updateApplyError, setUpdateApplyError] = useState<string | null>(null)
   const [demoInstalledSha] = useState<string | null>(() => {
     try {
       return localStorage.getItem("agrivision.installedSha")
@@ -111,20 +112,31 @@ export function SettingsPage() {
   }, [tab, isAdmin, demoInstalledSha])
 
   async function runUpdateApply(kind: "update" | "repair" = "update") {
-    if (kind === "update" && !updateStatus?.updateAvailable) return
-    if (!window.confirm(kind === "repair" ? t("settings.updateRepairConfirm") : t("settings.updateConfirm"))) {
+    const canRetryMigrations = Boolean(updateStatus?.lastError || updateStatus?.migrationError)
+    if (kind === "update" && !updateStatus?.updateAvailable && !canRetryMigrations) return
+    if (
+      !window.confirm(
+        kind === "repair" || canRetryMigrations
+          ? t("settings.updateRepairConfirm")
+          : t("settings.updateConfirm"),
+      )
+    ) {
       return
     }
     setUpdateApplying(true)
+    setUpdateApplyError(null)
     // repair: same SHA, backend still re-deploys frontend/dist → public/
     const result = await applyUpdate(updateStatus?.remoteSha ?? null, { force: false })
     setUpdateApplying(false)
     if (!result.ok) {
+      const err = result.error ?? "—"
+      setUpdateApplyError(err)
       if (result.error === "backend_unavailable") {
         store.pushToast("warn", t("settings.updateBackendMissing"))
         return
       }
-      store.pushToast("warn", t("settings.updateFailed", { error: result.error ?? "—" }))
+      store.pushToast("warn", t("settings.updateFailed", { error: err }))
+      await runUpdateCheck()
       return
     }
     if (updateStatus?.remoteSha) {
@@ -587,7 +599,7 @@ export function SettingsPage() {
             >
               {updateApplying ? t("settings.updateApplying") : t("settings.updateApply")}
             </button>
-            {liveMode && updateStatus && !updateStatus.updateAvailable ? (
+            {liveMode && updateStatus && (!updateStatus.updateAvailable || updateStatus.lastError || updateStatus.migrationError) ? (
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -605,6 +617,36 @@ export function SettingsPage() {
           {liveMode && updateStatus && !updateStatus.updateAvailable ? (
             <p className="hint">{t("settings.updateRepairHint")}</p>
           ) : null}
+
+          {(() => {
+            const persistent =
+              updateApplyError ||
+              updateStatus?.lastError ||
+              updateStatus?.migrationError ||
+              null
+            if (!persistent) return null
+            return (
+              <div className="host-error-box update-error-box" role="alert">
+                <p className="hint">{t("settings.updateLastErrorTitle")}</p>
+                <p className="field-error">{persistent}</p>
+                <div className="setting-actions">
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(persistent).then(
+                        () => store.pushToast("ok", t("settings.updateErrorCopied")),
+                        () => store.pushToast("warn", t("create.copyFailed")),
+                      )
+                    }}
+                  >
+                    {t("settings.updateErrorCopy")}
+                  </button>
+                </div>
+                <p className="hint">{t("settings.updateLastErrorHint")}</p>
+              </div>
+            )
+          })()}
         </section>
       ) : null}
 

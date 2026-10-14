@@ -20,6 +20,10 @@ export type UpdateStatus = {
   checkedAt: string
   source: "api" | "github" | "demo"
   error?: string
+  /** Last failed update/migration — persisted server-side for support. */
+  lastError?: string | null
+  lastErrorAt?: string | null
+  migrationError?: string | null
 }
 
 function shortSha(sha: string | null | undefined) {

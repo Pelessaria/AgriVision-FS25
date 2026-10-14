@@ -61,9 +61,21 @@ class SystemUpdateController extends Controller
 
             return response()->json($result);
         } catch (Throwable $e) {
+            $parts = [];
+            $current = $e;
+            $guard = 0;
+            while ($current !== null && $guard < 5) {
+                $message = trim($current->getMessage());
+                if ($message !== '' && ! in_array($message, $parts, true)) {
+                    $parts[] = $message;
+                }
+                $current = $current->getPrevious();
+                $guard++;
+            }
+
             return response()->json([
                 'ok' => false,
-                'error' => $e->getMessage(),
+                'error' => $parts !== [] ? implode(' — ', $parts) : $e->getMessage(),
             ], 500);
         }
     }

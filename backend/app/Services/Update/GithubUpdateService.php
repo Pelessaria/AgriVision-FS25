@@ -20,6 +20,8 @@ final class GithubUpdateService
 {
     private const STATE_FILE = 'update-state.json';
 
+    private const LOG_FILE = 'agrivision-update.log';
+
     /**
      * @return array{
      *   enabled: bool,
@@ -32,7 +34,10 @@ final class GithubUpdateService
      *   remoteMessage: string|null,
      *   remoteHtmlUrl: string|null,
      *   updateAvailable: bool,
-     *   checkedAt: string
+     *   checkedAt: string,
+     *   lastError: string|null,
+     *   lastErrorAt: string|null,
+     *   migrationError: string|null
      * }
      */
     public function status(): array
@@ -65,6 +70,9 @@ final class GithubUpdateService
             'updateAvailable' => is_string($remoteSha)
                 && ($installedSha === null || ! hash_equals($installedSha, $remoteSha)),
             'checkedAt' => gmdate('c'),
+            'lastError' => isset($state['lastError']) ? (string) $state['lastError'] : null,
+            'lastErrorAt' => isset($state['lastErrorAt']) ? (string) $state['lastErrorAt'] : null,
+            'migrationError' => isset($state['migrationError']) ? (string) $state['migrationError'] : null,
         ];
     }
 
@@ -104,7 +112,43 @@ final class GithubUpdateService
 
         // Same Git SHA can still mean a stale SPA in public/ (failed copy, cache, skipped dist).
         // Without --force we still re-deploy the frontend; with --force we re-overlay backend too.
+        // If a previous run left migrationError, retry migrate without re-downloading.
         if ($alreadyLatest && ! $force) {
+            if (! empty($state['migrationError']) || ! empty($state['lastError'])) {
+                try {
+                    $this->runMigrations();
+                    $this->writeState([
+                        'sha' => $toSha,
+                        'installedAt' => gmdate('c'),
+                        'fromSha' => $fromSha,
+                        'filesWritten' => $state['filesWritten'] ?? 0,
+                        'migrationsRan' => true,
+                        'migrationError' => null,
+                        'lastError' => null,
+                        'lastErrorAt' => null,
+                    ]);
+                    $this->logUpdate("OK migration retry for {$toSha}");
+
+                    return [
+                        'ok' => true,
+                        'fromSha' => $fromSha,
+                        'toSha' => $toSha,
+                        'filesWritten' => (int) ($state['filesWritten'] ?? 0),
+                        'migrationsRan' => true,
+                        'message' => 'Migrations retry succeeded. Reload the page.',
+                    ];
+                } catch (Throwable $e) {
+                    $detail = $this->formatThrowable($e);
+                    $this->logUpdate('MIGRATION RETRY FAILED: '.$detail);
+                    $this->writeState(array_merge($state, [
+                        'migrationError' => $detail,
+                        'lastError' => 'Migration retry failed: '.$detail,
+                        'lastErrorAt' => gmdate('c'),
+                    ]));
+                    throw new RuntimeException('Migration retry failed: '.$detail, 0, $e);
+                }
+            }
+
             return $this->redeploySpaFromGithub($owner, $repo, $toSha, $fromSha);
         }
 
@@ -127,19 +171,24 @@ final class GithubUpdateService
 
             $migrationsRan = false;
             try {
-                Artisan::call('migrate', ['--force' => true]);
+                $this->runMigrations();
                 $migrationsRan = true;
             } catch (Throwable $e) {
+                $detail = $this->formatThrowable($e);
+                $this->logUpdate('MIGRATION FAILED: '.$detail);
                 $this->writeState([
                     'sha' => $toSha,
                     'installedAt' => gmdate('c'),
                     'fromSha' => $fromSha,
                     'filesWritten' => $filesWritten,
-                    'migrationError' => $e->getMessage(),
+                    'migrationsRan' => false,
+                    'migrationError' => $detail,
+                    'lastError' => 'Files updated, but migrations failed: '.$detail,
+                    'lastErrorAt' => gmdate('c'),
                 ]);
 
                 throw new RuntimeException(
-                    'Files updated, but migrations failed: '.$e->getMessage(),
+                    'Files updated, but migrations failed: '.$detail,
                     0,
                     $e
                 );
@@ -163,7 +212,11 @@ final class GithubUpdateService
                 'fromSha' => $fromSha,
                 'filesWritten' => $filesWritten,
                 'migrationsRan' => $migrationsRan,
+                'migrationError' => null,
+                'lastError' => null,
+                'lastErrorAt' => null,
             ]);
+            $this->logUpdate("OK update to {$toSha}, files={$filesWritten}, migrations=1");
 
             return [
                 'ok' => true,
@@ -173,6 +226,15 @@ final class GithubUpdateService
                 'migrationsRan' => $migrationsRan,
                 'message' => 'Update applied safely (.env/storage preserved, SPA redeployed).',
             ];
+        } catch (Throwable $e) {
+            $detail = $this->formatThrowable($e);
+            $this->logUpdate('UPDATE FAILED: '.$detail);
+            $prev = $this->readState();
+            $this->writeState(array_merge($prev, [
+                'lastError' => $detail,
+                'lastErrorAt' => gmdate('c'),
+            ]));
+            throw $e;
         } finally {
             File::delete($zipPath);
             if (File::exists($extractPath)) {
@@ -499,6 +561,47 @@ final class GithubUpdateService
         }
 
         return false;
+    }
+
+    private function runMigrations(): void
+    {
+        $exit = Artisan::call('migrate', ['--force' => true]);
+        $output = trim(Artisan::output());
+        $this->logUpdate('migrate exit='.$exit.($output !== '' ? "\n".$output : ''));
+        if ($exit !== 0) {
+            throw new RuntimeException(
+                'artisan migrate exited with code '.$exit
+                .($output !== '' ? ': '.$output : '')
+            );
+        }
+    }
+
+    private function formatThrowable(Throwable $e): string
+    {
+        $parts = [];
+        $current = $e;
+        $guard = 0;
+        while ($current !== null && $guard < 5) {
+            $message = trim($current->getMessage());
+            if ($message !== '' && ! in_array($message, $parts, true)) {
+                $parts[] = $message;
+            }
+            $current = $current->getPrevious();
+            $guard++;
+        }
+
+        return mb_substr($parts !== [] ? implode(' — ', $parts) : 'Unknown update error', 0, 4000);
+    }
+
+    private function logUpdate(string $line): void
+    {
+        try {
+            $path = storage_path('logs/'.self::LOG_FILE);
+            File::ensureDirectoryExists(dirname($path));
+            File::append($path, '['.gmdate('c').'] '.$line.PHP_EOL);
+        } catch (Throwable) {
+            // logging must never break updates
+        }
     }
 
     /**
