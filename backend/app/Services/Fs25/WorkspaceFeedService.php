@@ -181,11 +181,26 @@ final class WorkspaceFeedService
                 // Positions still useful without farm stubs / matching.
             }
 
-            $enriched = VehicleFarmMatcher::enrich($snapshot->vehicles, $saveVehicles);
+            $connector = (new ConnectorSnapshotService)->read($workspace);
+            $metaVehicles = ConnectorSnapshotService::mergeMeta($connector['vehicles'], $saveVehicles);
+
+            // Savegame/connector = inventory + farmId; stats = live name/position.
+            $enriched = VehicleFarmMatcher::mergeInventory($snapshot->vehicles, $metaVehicles);
+
+            $iconKeys = [];
+            foreach ($connector['icons'] as $icon) {
+                $iconKeys[$icon['key']] = true;
+            }
 
             $vehicles = [];
             foreach ($enriched as $index => $vehicle) {
                 $unique = $vehicle['uniqueId'] ?? null;
+                $modKey = $vehicle['modKey'] ?? null;
+                $iconUrl = null;
+                if (is_string($modKey) && $modKey !== '' && isset($iconKeys[$modKey])) {
+                    $iconUrl = '/api/workspaces/'.rawurlencode($workspace->public_id)
+                        .'/connector/icons/'.rawurlencode($modKey);
+                }
                 $vehicles[] = [
                     'id' => $unique
                         ? 'feed-'.$workspace->public_id.'-'.$unique
@@ -194,7 +209,8 @@ final class WorkspaceFeedService
                     'name' => $vehicle['name'] ?? 'Fahrzeug',
                     'category' => self::mapVehicleCategory($vehicle['category'] ?? null, $vehicle['type'] ?? null),
                     'farmId' => $vehicle['farmId'] ?? null,
-                    'iconUrl' => null,
+                    'modKey' => $modKey,
+                    'iconUrl' => $iconUrl,
                     'x' => $vehicle['x'] ?? null,
                     'y' => $vehicle['y'] ?? null,
                     'z' => $vehicle['z'] ?? null,

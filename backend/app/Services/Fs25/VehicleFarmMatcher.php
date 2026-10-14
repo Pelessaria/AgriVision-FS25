@@ -3,54 +3,103 @@
 namespace App\Services\Fs25;
 
 /**
- * Attach savegame farmId / hours to live stats vehicles (no uniqueId in stats JSON).
+ * Merge live stats vehicles with savegame / connector meta (farmId, uniqueId, hours).
+ *
+ * Inventory source of truth = savegame (or connector) rows that carry farmId.
+ * Stats supply fresher name/category/position when a match is found.
  */
 final class VehicleFarmMatcher
 {
     /** Max horizontal metres between stats position and savegame component. */
-    private const MAX_DISTANCE = 80.0;
+    private const MAX_DISTANCE = 250.0;
 
     /**
      * @param  list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null}>  $statsVehicles
-     * @param  list<array{uniqueId: string|null, farmId: int|null, filename: string|null, nameHint: string|null, operatingTime: float|null, x: float|null, y: float|null, z: float|null}>  $saveVehicles
-     * @return list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null, farmId: int|null, uniqueId: string|null, hours: float|null}>
+     * @param  list<array{uniqueId: string|null, farmId: int|null, filename: string|null, nameHint: string|null, operatingTime: float|null, x: float|null, y: float|null, z: float|null, modKey?: string|null, name?: string|null, category?: string|null}>  $metaVehicles
+     * @return list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null, farmId: int|null, uniqueId: string|null, hours: float|null, filename: string|null, modKey: string|null}>
      */
-    public static function enrich(array $statsVehicles, array $saveVehicles): array
+    public static function mergeInventory(array $statsVehicles, array $metaVehicles): array
     {
-        if ($statsVehicles === []) {
-            return [];
+        if ($metaVehicles === []) {
+            return self::statsOnly($statsVehicles);
         }
 
         $pairs = [];
-        foreach ($statsVehicles as $si => $stats) {
-            foreach ($saveVehicles as $vi => $save) {
-                $score = self::score($stats, $save);
+        foreach ($metaVehicles as $mi => $meta) {
+            foreach ($statsVehicles as $si => $stats) {
+                $score = self::score($stats, $meta);
                 if ($score === null) {
                     continue;
                 }
-                $pairs[] = ['si' => $si, 'vi' => $vi, 'score' => $score];
+                $pairs[] = ['mi' => $mi, 'si' => $si, 'score' => $score];
             }
         }
 
         usort($pairs, static fn (array $a, array $b): int => $b['score'] <=> $a['score']);
 
+        $usedMeta = [];
         $usedStats = [];
-        $usedSave = [];
         $match = [];
         foreach ($pairs as $pair) {
+            $mi = $pair['mi'];
             $si = $pair['si'];
-            $vi = $pair['vi'];
-            if (isset($usedStats[$si]) || isset($usedSave[$vi])) {
+            if (isset($usedMeta[$mi]) || isset($usedStats[$si])) {
                 continue;
             }
+            $usedMeta[$mi] = true;
             $usedStats[$si] = true;
-            $usedSave[$vi] = true;
-            $match[$si] = $saveVehicles[$vi];
+            $match[$mi] = $statsVehicles[$si];
         }
 
         $out = [];
-        foreach ($statsVehicles as $si => $stats) {
-            $save = $match[$si] ?? null;
+        foreach ($metaVehicles as $mi => $meta) {
+            $stats = $match[$mi] ?? null;
+            $hint = $meta['nameHint'] ?? VehiclesXmlParser::nameHintFromFilename($meta['filename'] ?? null);
+            $name = $stats['name'] ?? $meta['name'] ?? $hint;
+            $out[] = [
+                'name' => $name,
+                'category' => $stats['category'] ?? ($meta['category'] ?? null),
+                'type' => $stats['type'] ?? null,
+                'x' => $stats['x'] ?? ($meta['x'] ?? null),
+                'y' => $stats['y'] ?? ($meta['y'] ?? null),
+                'z' => $stats['z'] ?? ($meta['z'] ?? null),
+                'farmId' => $meta['farmId'] ?? null,
+                'uniqueId' => $meta['uniqueId'] ?? null,
+                'hours' => isset($meta['operatingTime']) && is_numeric($meta['operatingTime'])
+                    ? round((float) $meta['operatingTime'], 1)
+                    : null,
+                'filename' => $meta['filename'] ?? null,
+                'modKey' => $meta['modKey'] ?? null,
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @deprecated Prefer mergeInventory (savegame-first). Kept for tests / fallback.
+     *
+     * @param  list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null}>  $statsVehicles
+     * @param  list<array{uniqueId: string|null, farmId: int|null, filename: string|null, nameHint: string|null, operatingTime: float|null, x: float|null, y: float|null, z: float|null}>  $saveVehicles
+     * @return list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null, farmId: int|null, uniqueId: string|null, hours: float|null, filename: string|null, modKey: string|null}>
+     */
+    public static function enrich(array $statsVehicles, array $saveVehicles): array
+    {
+        if ($saveVehicles !== []) {
+            return self::mergeInventory($statsVehicles, $saveVehicles);
+        }
+
+        return self::statsOnly($statsVehicles);
+    }
+
+    /**
+     * @param  list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null}>  $statsVehicles
+     * @return list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null, farmId: int|null, uniqueId: string|null, hours: float|null, filename: string|null, modKey: string|null}>
+     */
+    private static function statsOnly(array $statsVehicles): array
+    {
+        $out = [];
+        foreach ($statsVehicles as $stats) {
             $out[] = [
                 'name' => $stats['name'] ?? null,
                 'category' => $stats['category'] ?? null,
@@ -58,11 +107,11 @@ final class VehicleFarmMatcher
                 'x' => $stats['x'] ?? null,
                 'y' => $stats['y'] ?? null,
                 'z' => $stats['z'] ?? null,
-                'farmId' => $save['farmId'] ?? null,
-                'uniqueId' => $save['uniqueId'] ?? null,
-                'hours' => isset($save['operatingTime']) && is_numeric($save['operatingTime'])
-                    ? round((float) $save['operatingTime'], 1)
-                    : null,
+                'farmId' => null,
+                'uniqueId' => null,
+                'hours' => null,
+                'filename' => null,
+                'modKey' => null,
             ];
         }
 
@@ -71,31 +120,41 @@ final class VehicleFarmMatcher
 
     /**
      * @param  array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null}  $stats
-     * @param  array{uniqueId: string|null, farmId: int|null, filename: string|null, nameHint: string|null, operatingTime: float|null, x: float|null, y: float|null, z: float|null}  $save
+     * @param  array{uniqueId: string|null, farmId: int|null, filename: string|null, nameHint: string|null, operatingTime: float|null, x: float|null, y: float|null, z: float|null, name?: string|null}  $meta
      */
-    private static function score(array $stats, array $save): ?float
+    private static function score(array $stats, array $meta): ?float
     {
         $hasStatsPos = isset($stats['x'], $stats['z']) && $stats['x'] !== null && $stats['z'] !== null;
-        $hasSavePos = isset($save['x'], $save['z']) && $save['x'] !== null && $save['z'] !== null;
+        $hasMetaPos = isset($meta['x'], $meta['z']) && $meta['x'] !== null && $meta['z'] !== null;
 
         $distanceScore = 0.0;
-        if ($hasStatsPos && $hasSavePos) {
-            $dx = (float) $stats['x'] - (float) $save['x'];
-            $dz = (float) $stats['z'] - (float) $save['z'];
+        if ($hasStatsPos && $hasMetaPos) {
+            $dx = (float) $stats['x'] - (float) $meta['x'];
+            $dz = (float) $stats['z'] - (float) $meta['z'];
             $dist = sqrt(($dx * $dx) + ($dz * $dz));
             if ($dist > self::MAX_DISTANCE) {
-                return null;
+                // Still allow strong name matches for vehicles that moved far since last save.
+                $nameOnly = self::nameScore(
+                    $stats['name'] ?? null,
+                    $meta['name'] ?? ($meta['nameHint'] ?? null),
+                    $meta['filename'] ?? null
+                );
+                if ($nameOnly < 30.0) {
+                    return null;
+                }
+
+                return $nameOnly;
             }
-            $distanceScore = (self::MAX_DISTANCE - $dist) * 10.0;
-        } elseif ($hasStatsPos || $hasSavePos) {
-            // Position on only one side — allow weak name match only.
-            $distanceScore = 0.0;
-        } else {
-            $distanceScore = 5.0;
+            $distanceScore = (self::MAX_DISTANCE - $dist) * 4.0;
         }
 
-        $nameScore = self::nameScore($stats['name'] ?? null, $save['nameHint'] ?? null, $save['filename'] ?? null);
-        if ($distanceScore <= 0.0 && $nameScore < 20.0) {
+        $nameScore = self::nameScore(
+            $stats['name'] ?? null,
+            $meta['name'] ?? ($meta['nameHint'] ?? null),
+            $meta['filename'] ?? null
+        );
+
+        if ($distanceScore <= 0.0 && $nameScore < 18.0) {
             return null;
         }
 
@@ -112,13 +171,12 @@ final class VehicleFarmMatcher
         $hint = self::normalizeName($hint);
         $file = self::normalizeName($filename);
         if ($hint !== '' && ($hint === $statsName || str_contains($hint, $statsName) || str_contains($statsName, $hint))) {
-            return 40.0;
+            return 45.0;
         }
         if ($file !== '' && str_contains($file, $statsName)) {
-            return 30.0;
+            return 35.0;
         }
 
-        // Token overlap (e.g. "Fendt 728" vs "fendt728vario")
         $tokens = preg_split('/[^a-z0-9]+/', $statsName) ?: [];
         $tokens = array_values(array_filter($tokens, static fn (string $t): bool => strlen($t) >= 3));
         if ($tokens === []) {
@@ -135,7 +193,7 @@ final class VehicleFarmMatcher
             return 0.0;
         }
 
-        return 12.0 * $hits;
+        return 14.0 * $hits;
     }
 
     private static function normalizeName(?string $value): string

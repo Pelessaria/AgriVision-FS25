@@ -2,6 +2,8 @@
 
 namespace Tests\Unit;
 
+use App\Services\Fs25\ConnectorSnapshotService;
+use App\Services\Fs25\ConnectorVehiclesParser;
 use App\Services\Fs25\VehicleFarmMatcher;
 use App\Services\Fs25\VehiclesXmlParser;
 use PHPUnit\Framework\TestCase;
@@ -30,7 +32,7 @@ class VehicleFarmMatcherTest extends TestCase
         $this->assertSame('fendt728', $parsed[0]['nameHint']);
     }
 
-    public function test_matches_stats_vehicle_to_savegame_farm_by_position(): void
+    public function test_merge_inventory_is_savegame_first_with_live_position(): void
     {
         $stats = [
             ['name' => 'Fendt 728', 'category' => 'tractors', 'type' => 'tractor', 'x' => 101.0, 'y' => 40.0, 'z' => -199.0],
@@ -57,34 +59,68 @@ class VehicleFarmMatcherTest extends TestCase
                 'y' => 5.0,
                 'z' => 10.0,
             ],
-        ];
-
-        $enriched = VehicleFarmMatcher::enrich($stats, $save);
-        $this->assertSame(1, $enriched[0]['farmId']);
-        $this->assertSame('v1', $enriched[0]['uniqueId']);
-        $this->assertSame(12.5, $enriched[0]['hours']);
-        $this->assertSame(2, $enriched[1]['farmId']);
-    }
-
-    public function test_does_not_match_distant_vehicles(): void
-    {
-        $stats = [
-            ['name' => 'Fendt', 'category' => 'tractors', 'type' => 'tractor', 'x' => 0.0, 'y' => 0.0, 'z' => 0.0],
-        ];
-        $save = [
             [
-                'uniqueId' => 'v1',
+                'uniqueId' => 'v3',
                 'farmId' => 1,
-                'filename' => 'data/vehicles/other/other.xml',
-                'nameHint' => 'other',
+                'filename' => 'data/vehicles/tools/cultivator.xml',
+                'nameHint' => 'cultivator',
                 'operatingTime' => 1.0,
-                'x' => 500.0,
+                'x' => 50.0,
                 'y' => 0.0,
-                'z' => 500.0,
+                'z' => 50.0,
             ],
         ];
 
-        $enriched = VehicleFarmMatcher::enrich($stats, $save);
-        $this->assertNull($enriched[0]['farmId']);
+        $merged = VehicleFarmMatcher::mergeInventory($stats, $save);
+        $this->assertCount(3, $merged);
+        $this->assertSame(1, $merged[0]['farmId']);
+        $this->assertSame(101.0, $merged[0]['x']); // live stats position
+        $this->assertSame('v1', $merged[0]['uniqueId']);
+        $this->assertSame(1, $merged[2]['farmId']); // unmatched save vehicle kept
+        $this->assertSame(50.0, $merged[2]['x']);
+    }
+
+    public function test_connector_meta_overrides_savegame_by_unique_id(): void
+    {
+        $save = [[
+            'uniqueId' => 'v1',
+            'farmId' => 1,
+            'filename' => 'data/a.xml',
+            'nameHint' => 'a',
+            'operatingTime' => 1.0,
+            'x' => 1.0,
+            'y' => 0.0,
+            'z' => 1.0,
+            'modKey' => null,
+        ]];
+        $connector = [[
+            'uniqueId' => 'v1',
+            'farmId' => 1,
+            'filename' => 'data/a.xml',
+            'nameHint' => 'a',
+            'name' => 'Fendt Live',
+            'category' => 'tractor',
+            'operatingTime' => 9.0,
+            'modKey' => 'hash123',
+            'x' => 2.0,
+            'y' => 0.0,
+            'z' => 2.0,
+        ]];
+
+        $merged = ConnectorSnapshotService::mergeMeta($connector, $save);
+        $this->assertCount(1, $merged);
+        $this->assertSame('hash123', $merged[0]['modKey']);
+        $this->assertSame('Fendt Live', $merged[0]['name']);
+        $this->assertSame(9.0, $merged[0]['operatingTime']);
+    }
+
+    public function test_parses_connector_vehicles_full(): void
+    {
+        $xml = '<vehiclesFull><vehicle uniqueId="u1" farmId="2" filename="x.xml" name="Tool" modKey="k1" operatingTime="4" x="1" y="2" z="3" /></vehiclesFull>';
+        $parsed = ConnectorVehiclesParser::parse($xml);
+        $this->assertCount(1, $parsed);
+        $this->assertSame(2, $parsed[0]['farmId']);
+        $this->assertSame('k1', $parsed[0]['modKey']);
+        $this->assertSame('Tool', $parsed[0]['name']);
     }
 }

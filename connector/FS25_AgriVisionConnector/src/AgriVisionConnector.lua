@@ -12,7 +12,7 @@
 
 AgriVisionConnector = {}
 AgriVisionConnector.MOD_NAME = "FS25_AgriVisionConnector"
-AgriVisionConnector.VERSION = "0.1.0.0"
+AgriVisionConnector.VERSION = "0.1.1.0"
 AgriVisionConnector.SCHEMA = "1"
 AgriVisionConnector.TICK_MS = 5000
 AgriVisionConnector.FULL_VEHICLE_EVERY_MS = 60000
@@ -165,15 +165,118 @@ function AgriVisionConnector:writeHello()
     self:writeTextFile(self.baseDir .. "hello.xml", body)
 end
 
+function AgriVisionConnector:vehicleWorldPos(vehicle)
+    if vehicle == nil then
+        return nil, nil, nil
+    end
+    local ok, x, y, z = pcall(function()
+        if vehicle.rootNode ~= nil and getWorldTranslation ~= nil then
+            return getWorldTranslation(vehicle.rootNode)
+        end
+        if vehicle.components ~= nil and vehicle.components[1] ~= nil and vehicle.components[1].node ~= nil and getWorldTranslation ~= nil then
+            return getWorldTranslation(vehicle.components[1].node)
+        end
+        return nil, nil, nil
+    end)
+    if ok then
+        return x, y, z
+    end
+    return nil, nil, nil
+end
+
 function AgriVisionConnector:collectVehiclesFullXml()
     local parts = {}
-    -- Vehicle enumeration APIs differ by build; keep a safe empty full snapshot if unavailable.
-    if g_currentMission == nil or g_currentMission.vehicleSystem == nil then
-        return "    <!-- vehicleSystem unavailable on this build -->\n"
+    if g_currentMission == nil then
+        return "    <!-- mission unavailable -->\n"
     end
-    -- Placeholder: concrete iteration is filled after the dedicated-server probe
-    -- (vehicles.xml via feed remains the Phase-4 source of truth for meta).
-    table.insert(parts, "    <!-- full vehicle walk: enable after server probe confirms iterators -->\n")
+
+    local vehiclesTable = nil
+    if g_currentMission.vehicleSystem ~= nil and g_currentMission.vehicleSystem.vehicles ~= nil then
+        vehiclesTable = g_currentMission.vehicleSystem.vehicles
+    elseif g_currentMission.vehicles ~= nil then
+        vehiclesTable = g_currentMission.vehicles
+    end
+    if vehiclesTable == nil then
+        return "    <!-- vehicle list unavailable on this build -->\n"
+    end
+
+    local count = 0
+    for _, vehicle in pairs(vehiclesTable) do
+        if vehicle ~= nil then
+            local farmId = nil
+            if vehicle.getOwnerFarmId ~= nil then
+                local ok, id = pcall(function()
+                    return vehicle:getOwnerFarmId()
+                end)
+                if ok and type(id) == "number" and id > 0 then
+                    farmId = id
+                end
+            elseif type(vehicle.ownerFarmId) == "number" and vehicle.ownerFarmId > 0 then
+                farmId = vehicle.ownerFarmId
+            end
+
+            local uniqueId = nil
+            if vehicle.getUniqueId ~= nil then
+                local ok, uid = pcall(function()
+                    return vehicle:getUniqueId()
+                end)
+                if ok and uid ~= nil and tostring(uid) ~= "" then
+                    uniqueId = tostring(uid)
+                end
+            elseif vehicle.uniqueId ~= nil then
+                uniqueId = tostring(vehicle.uniqueId)
+            end
+
+            local filename = vehicle.configFileName or vehicle.xmlFilename or ""
+            local name = ""
+            if vehicle.getName ~= nil then
+                local ok, n = pcall(function()
+                    return vehicle:getName()
+                end)
+                if ok and n ~= nil then
+                    name = tostring(n)
+                end
+            end
+            if name == "" and vehicle.name ~= nil then
+                name = tostring(vehicle.name)
+            end
+
+            local operatingTime = nil
+            if type(vehicle.operatingTime) == "number" then
+                -- Engine stores ms; contract expects hours.
+                operatingTime = vehicle.operatingTime / 3600000
+            end
+
+            local x, y, z = self:vehicleWorldPos(vehicle)
+            local attrs = {}
+            if uniqueId ~= nil then
+                table.insert(attrs, string.format('uniqueId="%s"', self:xmlEscape(uniqueId)))
+            end
+            if filename ~= "" then
+                table.insert(attrs, string.format('filename="%s"', self:xmlEscape(filename)))
+            end
+            if farmId ~= nil then
+                table.insert(attrs, string.format('farmId="%s"', self:xmlEscape(farmId)))
+            end
+            if name ~= "" then
+                table.insert(attrs, string.format('name="%s"', self:xmlEscape(name)))
+            end
+            if operatingTime ~= nil then
+                table.insert(attrs, string.format('operatingTime="%.2f"', operatingTime))
+            end
+            if x ~= nil and z ~= nil then
+                table.insert(attrs, string.format('x="%.2f" y="%.2f" z="%.2f"', x, y or 0, z))
+            end
+            if #attrs > 0 then
+                table.insert(parts, string.format("  <vehicle %s />\n", table.concat(attrs, " ")))
+                count = count + 1
+            end
+        end
+    end
+
+    if count == 0 then
+        return "    <!-- no vehicles enumerated -->\n"
+    end
     return table.concat(parts, "")
 end
 

@@ -1,0 +1,95 @@
+<?php
+
+namespace App\Services\Fs25;
+
+/**
+ * Parse connector state/vehicles_full.xml (uniqueId + farmId + modKey).
+ */
+final class ConnectorVehiclesParser
+{
+    /**
+     * @return list<array{
+     *   uniqueId: string|null,
+     *   farmId: int|null,
+     *   filename: string|null,
+     *   nameHint: string|null,
+     *   name: string|null,
+     *   category: string|null,
+     *   operatingTime: float|null,
+     *   modKey: string|null,
+     *   x: float|null,
+     *   y: float|null,
+     *   z: float|null
+     * }>
+     */
+    public static function parse(string $xml): array
+    {
+        $xml = trim($xml);
+        if ($xml === '' || ! preg_match_all('/<vehicle\b([^>]*)\/?>/i', $xml, $matches)) {
+            return [];
+        }
+
+        $vehicles = [];
+        foreach ($matches[1] as $attrBlob) {
+            $uniqueId = self::attr($attrBlob, 'uniqueId');
+            $farmId = self::intAttr($attrBlob, 'farmId');
+            if ($farmId !== null && $farmId <= 0) {
+                $farmId = null;
+            }
+            $filename = self::attr($attrBlob, 'filename');
+            $name = self::attr($attrBlob, 'name');
+            $category = self::attr($attrBlob, 'category');
+            $modKey = self::attr($attrBlob, 'modKey');
+            $operatingTime = self::floatAttr($attrBlob, 'operatingTime');
+            $x = self::floatAttr($attrBlob, 'x');
+            $y = self::floatAttr($attrBlob, 'y');
+            $z = self::floatAttr($attrBlob, 'z');
+
+            $vehicles[] = [
+                'uniqueId' => $uniqueId,
+                'farmId' => $farmId,
+                'filename' => $filename,
+                'nameHint' => VehiclesXmlParser::nameHintFromFilename($filename),
+                'name' => $name,
+                'category' => $category,
+                'operatingTime' => $operatingTime,
+                'modKey' => $modKey,
+                'x' => $x,
+                'y' => $y,
+                'z' => $z,
+            ];
+        }
+
+        return $vehicles;
+    }
+
+    private static function attr(string $blob, string $key): ?string
+    {
+        if (! preg_match('/\b'.preg_quote($key, '/').'="([^"]*)"/i', $blob, $m)) {
+            return null;
+        }
+        $value = trim(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+
+        return $value === '' ? null : $value;
+    }
+
+    private static function intAttr(string $blob, string $key): ?int
+    {
+        $raw = self::attr($blob, $key);
+        if ($raw === null || ! is_numeric($raw)) {
+            return null;
+        }
+
+        return (int) $raw;
+    }
+
+    private static function floatAttr(string $blob, string $key): ?float
+    {
+        $raw = self::attr($blob, $key);
+        if ($raw === null || ! is_numeric($raw)) {
+            return null;
+        }
+
+        return (float) $raw;
+    }
+}

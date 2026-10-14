@@ -24,6 +24,7 @@ Route::middleware('auth:web')->group(function () {
     Route::get('/workspaces/{workspace}/vehicles', [WorkspaceController::class, 'vehicles']);
     Route::get('/workspaces/{workspace}/farms', [WorkspaceController::class, 'farms']);
     Route::get('/workspaces/{workspace}/map', [WorkspaceController::class, 'map']);
+    Route::get('/workspaces/{workspace}/connector/icons/{modKey}', [WorkspaceController::class, 'connectorIcon']);
     Route::put('/workspaces/{workspace}/host-access', [WorkspaceController::class, 'updateHostAccess']);
     Route::post('/workspaces/{workspace}/host-access/probe', [WorkspaceController::class, 'probeHostAccess']);
     Route::delete('/workspaces/{workspace}/host-access', [WorkspaceController::class, 'deleteHostAccess']);

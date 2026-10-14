@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Workspace;
+use App\Services\Fs25\ConnectorSnapshotService;
 use App\Services\Fs25\HostAccessService;
 use App\Services\Fs25\WorkspaceFeedService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
@@ -159,6 +161,32 @@ class WorkspaceController extends Controller
         return response()->json([
             'farms' => $farms,
             'workspace' => $this->serialize($row->fresh()),
+        ]);
+    }
+
+    public function connectorIcon(string $workspace, string $modKey, ConnectorSnapshotService $connector): BinaryFileResponse|Response
+    {
+        $row = $this->findWorkspace($workspace);
+        $path = $connector->cachedIconPath($row, $modKey);
+        if ($path === null || ! is_file($path)) {
+            // Attempt a fresh pull when host access is available.
+            $connector->read($row);
+            $path = $connector->cachedIconPath($row, $modKey);
+        }
+        if ($path === null || ! is_file($path)) {
+            return response('Icon not found.', 404)->header('Content-Type', 'text/plain; charset=UTF-8');
+        }
+
+        $mime = match (strtolower(pathinfo($path, PATHINFO_EXTENSION))) {
+            'jpg', 'jpeg' => 'image/jpeg',
+            'webp' => 'image/webp',
+            'png' => 'image/png',
+            default => 'application/octet-stream',
+        };
+
+        return response()->file($path, [
+            'Content-Type' => $mime,
+            'Cache-Control' => 'private, max-age=86400',
         ]);
     }
 
