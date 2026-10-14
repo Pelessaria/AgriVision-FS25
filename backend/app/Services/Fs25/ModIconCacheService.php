@@ -2,85 +2,29 @@
 
 namespace App\Services\Fs25;
 
-use App\Models\HostAccess;
 use App\Models\Workspace;
 use Illuminate\Support\Facades\File;
-use Throwable;
-use ZipArchive;
 
 /**
- * Cache mod store icons (PNG) from host mods/*.zip for the equipment UI.
+ * Serve cached mod store icons for the equipment UI.
+ *
+ * Icons come from the connector (modSettings/.../icons) after it runs.
+ * Never download full mods/*.zip over FTP — that fills disk and stalls the UI.
  */
 final class ModIconCacheService
 {
     /**
-     * Ensure icons for the given mod keys exist locally; return keys that are ready.
-     *
      * @param  list<string>  $modKeys
      * @return array<string, true>
      */
     public function ensure(Workspace $workspace, array $modKeys): array
     {
         $ready = [];
-        $keys = array_values(array_unique(array_filter($modKeys, static fn ($k) => is_string($k) && $k !== '')));
-        if ($keys === []) {
-            return $ready;
-        }
-
-        $access = HostAccess::query()->where('workspace_id', $workspace->id)->first();
-        if (! $access || ! $access->hasPassword()) {
-            foreach ($keys as $key) {
-                if ($this->localPath($workspace, $key) !== null) {
-                    $ready[$key] = true;
-                }
-            }
-
-            return $ready;
-        }
-
-        try {
-            $client = new HostFileClient($access);
-            $modsDir = ConnectorDeployService::resolveModsDirectory($client, $access);
-        } catch (Throwable) {
-            foreach ($keys as $key) {
-                if ($this->localPath($workspace, $key) !== null) {
-                    $ready[$key] = true;
-                }
-            }
-
-            return $ready;
-        }
-
-        $dir = $this->cacheDir($workspace);
-        File::ensureDirectoryExists($dir);
-
-        // Hard cap: icon endpoint usually asks for one key; keep batch tiny.
-        foreach (array_slice($keys, 0, 8) as $key) {
-            $safe = $this->safeKey($key);
-            $existing = $this->localPath($workspace, $key);
-            if ($existing !== null) {
-                $ready[$key] = true;
-
+        foreach ($modKeys as $key) {
+            if (! is_string($key) || $key === '') {
                 continue;
             }
-
-            $remoteZip = rtrim($modsDir, '/').'/'.$key.'.zip';
-            try {
-                if (! $client->fileExists($remoteZip)) {
-                    continue;
-                }
-                $bytes = $client->read($remoteZip);
-            } catch (Throwable) {
-                continue;
-            }
-
-            // Single-key icon fetch: allow larger packs (cached after first hit).
-            if (strlen($bytes) > 48 * 1024 * 1024) {
-                continue;
-            }
-
-            $extracted = $this->extractPngIcon($bytes, $safe, $dir);
-            if ($extracted) {
+            if ($this->localPath($workspace, $key) !== null) {
                 $ready[$key] = true;
             }
         }
@@ -108,101 +52,20 @@ final class ModIconCacheService
             .'/connector/icons/'.rawurlencode($modKey);
     }
 
-    private function cacheDir(Workspace $workspace): string
+    public function cacheDir(Workspace $workspace): string
     {
         return storage_path('app/connector/'.$workspace->public_id.'/icons');
+    }
+
+    public function putPng(Workspace $workspace, string $modKey, string $pngBytes): void
+    {
+        $dir = $this->cacheDir($workspace);
+        File::ensureDirectoryExists($dir);
+        File::put($dir.'/'.$this->safeKey($modKey).'.png', $pngBytes);
     }
 
     private function safeKey(string $modKey): string
     {
         return preg_replace('/[^a-zA-Z0-9._-]+/', '_', $modKey) ?? 'icon';
-    }
-
-    private function extractPngIcon(string $zipBytes, string $safeKey, string $dir): bool
-    {
-        if (! class_exists(ZipArchive::class)) {
-            return false;
-        }
-
-        $tmp = tempnam(sys_get_temp_dir(), 'agm');
-        if ($tmp === false) {
-            return false;
-        }
-
-        try {
-            File::put($tmp, $zipBytes);
-            $zip = new ZipArchive;
-            if ($zip->open($tmp) !== true) {
-                return false;
-            }
-
-            $modDesc = $zip->getFromName('modDesc.xml') ?: $zip->getFromName('moddesc.xml');
-            $iconName = null;
-            if (is_string($modDesc) && preg_match('/<iconFilename>\s*([^<]+)\s*<\/iconFilename>/i', $modDesc, $m)) {
-                $iconName = trim(str_replace('\\', '/', $m[1]));
-            }
-            $candidates = array_values(array_filter([
-                $iconName,
-                'icon.png',
-                'icon.PNG',
-                'icon.jpg',
-                'icon.dds',
-                'icon.DDS',
-                'store.dds',
-            ]));
-
-            $picked = null;
-            $ext = 'png';
-            foreach ($candidates as $candidate) {
-                if ($candidate === null || $candidate === '') {
-                    continue;
-                }
-                $data = $zip->getFromName($candidate);
-                if ($data === false) {
-                    $data = $zip->getFromName(str_replace('\\', '/', $candidate));
-                }
-                if ($data === false) {
-                    // Case-insensitive basename search
-                    for ($i = 0; $i < $zip->numFiles; $i++) {
-                        $name = str_replace('\\', '/', (string) $zip->getNameIndex($i));
-                        if (strcasecmp(basename($name), basename($candidate)) === 0) {
-                            $data = $zip->getFromIndex($i);
-                            break;
-                        }
-                    }
-                }
-                if (is_string($data) && strlen($data) > 32) {
-                    $picked = $data;
-                    $ext = strtolower(pathinfo($candidate, PATHINFO_EXTENSION) ?: 'png');
-                    break;
-                }
-            }
-            $zip->close();
-
-            if ($picked === null) {
-                return false;
-            }
-
-            if ($ext === 'dds') {
-                $png = DdsToPng::convert($picked);
-                if ($png === null) {
-                    return false;
-                }
-                File::put($dir.'/'.$safeKey.'.png', $png);
-
-                return true;
-            }
-
-            if (! in_array($ext, ['png', 'jpg', 'jpeg', 'webp'], true)) {
-                $ext = 'png';
-            }
-            File::put($dir.'/'.$safeKey.'.'.$ext, $picked);
-
-            return true;
-        } catch (Throwable) {
-            return false;
-        } finally {
-            @unlink($tmp);
-        }
     }
 }

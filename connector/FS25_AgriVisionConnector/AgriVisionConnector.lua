@@ -12,7 +12,7 @@
 
 AgriVisionConnector = {}
 AgriVisionConnector.MOD_NAME = "FS25_AgriVisionConnector"
-AgriVisionConnector.VERSION = "0.1.2.1"
+AgriVisionConnector.VERSION = "0.1.2.2"
 AgriVisionConnector.SCHEMA = "1"
 AgriVisionConnector.TICK_MS = 5000
 AgriVisionConnector.FULL_VEHICLE_EVERY_MS = 60000
@@ -82,37 +82,19 @@ function AgriVisionConnector:xmlEscape(value)
 end
 
 function AgriVisionConnector:writeTextFile(path, body)
-    -- Prefer Engine XML helpers when available; fall back to io for local dedicated tests.
-    if io ~= nil and io.open ~= nil then
-        local tmp = path .. ".tmp"
-        local f = io.open(tmp, "w")
-        if f == nil then
-            log("cannot write " .. tmp)
-            return false
-        end
-        f:write(body)
-        f:close()
-        os.remove(path)
-        local ok, err = os.rename(tmp, path)
-        if not ok then
-            -- rename may be restricted; keep tmp content by copying
-            local dest = io.open(path, "w")
-            if dest == nil then
-                log("rename/copy failed for " .. path .. " " .. tostring(err))
-                return false
-            end
-            local src = io.open(tmp, "r")
-            if src ~= nil then
-                dest:write(src:read("*a"))
-                src:close()
-            end
-            dest:close()
-            os.remove(tmp)
-        end
-        return true
+    -- Dedicated-server sandbox: io.open works, os.* is often nil (crash: os.remove).
+    if io == nil or io.open == nil then
+        log("no io.open — hello/vehicles not written")
+        return false
     end
-    log("no io.open — hello/vehicles not written (check Engine XML API on target build)")
-    return false
+    local f = io.open(path, "w")
+    if f == nil then
+        log("cannot write " .. path)
+        return false
+    end
+    f:write(body)
+    f:close()
+    return true
 end
 
 function AgriVisionConnector:collectFarmsXml()

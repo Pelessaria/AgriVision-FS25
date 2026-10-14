@@ -226,10 +226,14 @@ class WorkspaceController extends Controller
         ModIconCacheService $icons,
     ): BinaryFileResponse|Response {
         $row = $this->findWorkspace($workspace);
+        // Only connector/modSettings icons — never pull full mods/*.zip over FTP.
         $path = $icons->localPath($row, $modKey) ?? $connector->cachedIconPath($row, $modKey);
         if ($path === null || ! is_file($path)) {
-            $icons->ensure($row, [$modKey]);
-            $connector->read($row);
+            try {
+                $connector->read($row);
+            } catch (\Throwable) {
+                // leave 404
+            }
             $path = $icons->localPath($row, $modKey) ?? $connector->cachedIconPath($row, $modKey);
         }
         if ($path === null || ! is_file($path)) {

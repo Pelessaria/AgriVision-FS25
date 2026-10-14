@@ -1,6 +1,6 @@
 # Packs FS25_AgriVisionConnector for dedicated-server install (ZIP root = mod files).
 # IMPORTANT: entry names must use forward slashes — Compress-Archive writes backslashes
-# which GIANTS cannot resolve (Error: Can't load resource '.../src/AgriVisionConnector.lua').
+# which GIANTS cannot resolve. Lua lives at ZIP root (AgriVisionConnector.lua).
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -12,6 +12,9 @@ $zip = Join-Path $dist "FS25_AgriVisionConnector.zip"
 
 if (-not (Test-Path (Join-Path $src "modDesc.xml"))) {
   throw "modDesc.xml missing in $src"
+}
+if (-not (Test-Path (Join-Path $src "AgriVisionConnector.lua"))) {
+  throw "AgriVisionConnector.lua missing in $src (must be at mod root)"
 }
 
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
@@ -40,9 +43,9 @@ try {
   if ($bad.Count -gt 0) {
     throw ("ZIP has backslash entries (GIANTS will fail): " + (($bad | ForEach-Object FullName) -join ', '))
   }
-  $lua = $check.GetEntry('src/AgriVisionConnector.lua')
+  $lua = $check.GetEntry('AgriVisionConnector.lua')
   if ($null -eq $lua) {
-    throw "ZIP missing src/AgriVisionConnector.lua"
+    throw "ZIP missing AgriVisionConnector.lua at root"
   }
 } finally {
   $check.Dispose()

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8" standalone="no" ?>
 <modDesc descVersion="114">
     <author>AgriVision</author>
-    <version>0.1.2.1</version>
+    <version>0.1.2.2</version>
     <title>
         <en>AgriVision Connector</en>
         <de>AgriVision Connector</de>
@@ -13,6 +13,6 @@
     <iconFilename>icon.png</iconFilename>
     <multiplayer supported="true" />
     <extraSourceFiles>
-        <sourceFile filename="src/AgriVisionConnector.lua" />
+        <sourceFile filename="AgriVisionConnector.lua" />
     </extraSourceFiles>
 </modDesc>
