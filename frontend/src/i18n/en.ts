@@ -61,7 +61,7 @@ export const en = {
     submit: "Sign in",
     submitting: "Signing in",
     emailInvalid: "Enter a valid email.",
-    passwordShort: "At least 12 characters.",
+    passwordShort: "At least 8 characters.",
     failed: "Sign-in failed. In this prototype the password wrong-password triggers this error.",
     hint: "Demo: any valid email and a password of at least 12 characters.",
   },

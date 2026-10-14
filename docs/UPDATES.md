@@ -1,11 +1,11 @@
 # Updates (GitHub, Shared Hosting)
 
-**Status:** In-App-Updater und CLI sind implementiert. Realm-Admin-Auth am Endpoint folgt mit dem Installer.  
+**Status:** In-App-Updater + Admin-Session-Auth.  
 **Stand:** 14. Oktober 2026
 
 ## Grundsatz
 
-AgriVision läuft auf klassischem Webspace (PHP + MySQL/MariaDB). **Docker ist keine unterstützte Betriebsart.** Quelle der Wahrheit ist das öffentliche GitHub-Repository. Der spätere Installer zieht dieses Repo (bzw. ein daraus gebautes Release-ZIP mit `vendor/`) auf den Webspace. Die Oberfläche kann sich danach selbst aktualisieren.
+AgriVision läuft auf klassischem Webspace (PHP + MySQL/MariaDB). **Docker ist keine unterstützte Betriebsart.** Quelle der Wahrheit ist das öffentliche GitHub-Repository. Der Installer zieht dieses Repo (bzw. ein daraus gebautes Release-ZIP mit `vendor/`) auf den Host. Die Oberfläche kann sich danach selbst aktualisieren.
 
 ## Quelle
 
@@ -21,29 +21,31 @@ Optional: `AGRIVISION_GITHUB_TOKEN` für höhere API-Limits. Für öffentliche R
 
 1. Liest den aktuellen Commit von GitHub (`GET /repos/.../commits/{branch}`).
 2. Lädt den Zipball dieses Commits herunter.
-3. Überlagert den Laravel-Baum (`backend/` im Repo → Installationswurzel).
-4. Legt gebautes Frontend ab, falls `frontend/dist/` im Zip vorhanden ist (`public/app/`).
-5. Führt `php artisan migrate --force` aus.
-6. Schreibt den installierten SHA nach `storage/app/update-state.json`.
+3. Überlagert den Laravel-Baum (`backend/` im Repo → Installationswurzel), **ohne** `.env`, `storage/`, `vendor/`, `public/index.php`.
+4. Legt gebautes Frontend ab, falls `frontend/dist/` im Zip vorhanden ist (`public/agrivision.html` + `public/assets/`).
+5. Setzt `.env`-Rechte (`0640`) und prüft, dass `APP_KEY` noch vorhanden ist.
+6. Führt `php artisan migrate --force` aus.
+7. Schreibt den installierten SHA nach `storage/app/update-state.json`.
 
 ## Was erhalten bleibt
 
-- `.env`
+- `.env` (inkl. `APP_KEY`, DB, Secrets)
 - gesamtes `storage/`
-- `bootstrap/cache/` (wird danach geleert, wo möglich)
+- `bootstrap/cache/`
+- `public/index.php` (Laravel Front-Controller)
 - lokales `vendor/` (nicht aus dem Zip überschrieben — Shared Hosting ohne Composer)
 
 ## Oberfläche
 
-Einstellungen → **Update** (nur Administrator):
+Einstellungen → **Update** (nur globaler Admin, Session + CSRF):
 
-- Status prüfen (Backend-API oder direkt GitHub im Prototyp)
-- Update installieren (nur wenn `/api/system/update` erreichbar ist)
+- Status prüfen
+- Update installieren
 
 ## CLI (Shell optional)
 
 ```bash
-cd backend
+cd /var/www/agrivision   # Installationswurzel
 php artisan agrivision:update --check
 php artisan agrivision:update --apply
 ```
@@ -52,16 +54,14 @@ php artisan agrivision:update --apply
 
 | Methode | Pfad | Zweck |
 | --- | --- | --- |
-| `GET` | `/api/system/update` | Status |
-| `POST` | `/api/system/update` | Body `{ "confirm": true, "sha": "…" }` |
-
-Ohne Realm-Login vorerst absichtlich mit `confirm=true` geschützt. Sobald Sessions stehen, nur Realm-Admin.
+| `GET` | `/api/system/update` | Status (auth: admin) |
+| `POST` | `/api/system/update` | Body `{ "confirm": true, "sha": "…" }` (auth: admin) |
 
 ## Release-ZIP vs. Repo-Zipball
 
 | Artefakt | Inhalt | Typischer Einsatz |
 | --- | --- | --- |
-| Repo-Zipball | Quellcode, ohne `vendor/` | In-App-Update der App-Dateien |
+| Repo-Zipball | Quellcode + `frontend/dist/`, ohne `vendor/` | In-App-Update der App-Dateien |
 | Release-ZIP (Installer) | App + `vendor/` + gebautes Frontend | Erstinstallation und Dependency-Wechsel |
 
 Ändert sich `composer.lock` stark, ist ein neues Release-ZIP mit `vendor/` nötig — Composer auf dem Webspace ist nicht Voraussetzung.

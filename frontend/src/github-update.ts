@@ -1,3 +1,5 @@
+import { apiFetch, ApiError } from "./api"
+
 /** Public GitHub source of truth for AgriVision installs and in-app updates. */
 export const GITHUB_OWNER = "Pelessaria"
 export const GITHUB_REPO = "AgriVision-FS25"
@@ -62,12 +64,26 @@ export async function checkForUpdates(installedVersion: string, installedSha: st
   const checkedAt = new Date().toISOString()
 
   try {
-    const response = await fetch("/api/system/update", { headers: { Accept: "application/json" } })
-    if (response.ok) {
-      const json = (await response.json()) as Omit<UpdateStatus, "source">
-      return { ...json, source: "api" }
+    const json = await apiFetch<Omit<UpdateStatus, "source">>("/api/system/update")
+    return { ...json, source: "api" }
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+      return {
+        enabled: false,
+        installedVersion,
+        installedSha,
+        installedAt: null,
+        repo: `${GITHUB_OWNER}/${GITHUB_REPO}`,
+        branch: GITHUB_BRANCH,
+        remoteSha: null,
+        remoteMessage: null,
+        remoteHtmlUrl: null,
+        updateAvailable: false,
+        checkedAt,
+        source: "api",
+        error: error.message,
+      }
     }
-  } catch {
     // Prototype / separate Vite origin — use GitHub directly.
   }
 
@@ -109,20 +125,18 @@ export async function checkForUpdates(installedVersion: string, installedSha: st
 
 export async function applyUpdate(sha: string | null): Promise<{ ok: boolean; error?: string; message?: string }> {
   try {
-    const response = await fetch("/api/system/update", {
+    const json = await apiFetch<{ ok?: boolean; error?: string; message?: string }>("/api/system/update", {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
       body: JSON.stringify({ confirm: true, sha: sha ?? undefined }),
     })
-    const json = (await response.json()) as { ok?: boolean; error?: string; message?: string }
-    if (!response.ok || json.ok === false) {
-      return { ok: false, error: json.error ?? `HTTP ${response.status}` }
+    if (json.ok === false) {
+      return { ok: false, error: json.error ?? "Update failed" }
     }
     return { ok: true, message: json.message }
-  } catch {
+  } catch (error) {
+    if (error instanceof ApiError) {
+      return { ok: false, error: error.message }
+    }
     return {
       ok: false,
       error: "backend_unavailable",

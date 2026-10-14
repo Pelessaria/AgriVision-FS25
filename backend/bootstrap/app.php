@@ -13,6 +13,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Same-origin SPA: cookie sessions + CSRF on /api/*
+        // ValidateCsrfToken also sets the encrypted XSRF-TOKEN cookie for the SPA.
+        $middleware->api(prepend: [
+            \Illuminate\Cookie\Middleware\EncryptCookies::class,
+            \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+            \Illuminate\Session\Middleware\StartSession::class,
+            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+            \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
+        ]);
+
         // Nginx Proxy Manager / reverse proxies: honor X-Forwarded-* so HTTPS URLs and secure cookies work.
         $proxies = env('TRUSTED_PROXIES');
         if (is_string($proxies) && $proxies !== '') {

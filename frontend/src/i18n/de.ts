@@ -59,7 +59,7 @@ export const de = {
     submit: "Anmelden",
     submitting: "Anmeldung läuft",
     emailInvalid: "Eine gültige E-Mail eintragen.",
-    passwordShort: "Mindestens 12 Zeichen.",
+    passwordShort: "Mindestens 8 Zeichen.",
     failed: "Anmeldung fehlgeschlagen. Im Prototyp löst das Passwort wrong-password diesen Fehler aus.",
     hint: "Demo: beliebige gültige E-Mail, Passwort mit mindestens 12 Zeichen.",
   },

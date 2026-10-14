@@ -6,6 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react"
+import { apiCreateWorkspace, apiIsLive, apiLogin, apiLogout, apiMe, apiWorkspaces } from "./api"
 import { seedActivity, seedFarms, seedUsers, seedVehicles, seedWorkspaces, demoCode } from "./demo"
 import { seedGroups } from "./groups"
 import { defaultMailSettings, normalizeMailSettings } from "./mail"
@@ -61,8 +62,12 @@ interface Store {
   selectedFarmByWorkspace: Record<string, string>
   reveals: Record<string, string>
   toasts: ToastItem[]
-  signIn: () => void
-  signOut: () => void
+  /** true when talking to Laravel /api; false = local demo prototype */
+  liveMode: boolean
+  /** false until first API probe finished */
+  ready: boolean
+  signIn: (email: string, password: string) => Promise<"ok" | "failed">
+  signOut: () => Promise<void>
   setViewUser: (id: string) => void
   canOpen: (workspaceId: string) => boolean
   canManageWorkspace: (workspaceId: string) => boolean
@@ -72,7 +77,7 @@ interface Store {
   selectedFarm: (workspaceId: string) => Farm | null
   setSelectedFarm: (workspaceId: string, farmId: string) => void
   farmByGameId: (workspaceId: string, gameFarmId: number | null) => Farm | null
-  createWorkspace: (name: string) => { workspace: Workspace; code: string }
+  createWorkspace: (name: string) => Promise<{ workspace: Workspace; code: string }>
   renameWorkspace: (id: string, name: string) => void
   setFeedUrl: (id: string, feedUrl: string) => void
   setDisabled: (id: string, disabled: boolean) => void
@@ -267,6 +272,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [activity] = useState(initial.activity)
   const [groups, setGroups] = useState(initial.groups)
   const [mailSettings, setMailSettingsState] = useState(initial.mailSettings)
+  const [liveMode, setLiveMode] = useState(false)
+  const [ready, setReady] = useState(false)
   const [sessionUserId, setSessionUserId] = useState(initial.sessionUserId)
   const [viewUserId, setViewUserId] = useState(initial.viewUserId)
   const [selectedFarmByWorkspace, setSelectedFarmByWorkspace] = useState(loadFarmSelection)
@@ -274,6 +281,45 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([])
 
   useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const live = await apiIsLive()
+      if (cancelled) return
+      if (!live) {
+        setLiveMode(false)
+        setReady(true)
+        return
+      }
+      setLiveMode(true)
+      try {
+        const me = await apiMe()
+        if (cancelled) return
+        if (me) {
+          setUsers([me])
+          setSessionUserId(me.id)
+          setViewUserId(me.id)
+          const list = await apiWorkspaces()
+          if (!cancelled) setWorkspaces(list)
+        } else {
+          setSessionUserId(null)
+          setViewUserId(null)
+          setWorkspaces([])
+        }
+      } catch {
+        // API probe succeeded but session hydrate failed — stay logged out in live mode.
+        setSessionUserId(null)
+        setViewUserId(null)
+      } finally {
+        if (!cancelled) setReady(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (liveMode) return
     const payload: Persisted = {
       users,
       workspaces,
@@ -285,7 +331,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       viewUserId,
     }
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(payload))
-  }, [users, workspaces, vehicles, activity, groups, mailSettings, sessionUserId, viewUserId])
+  }, [liveMode, users, workspaces, vehicles, activity, groups, mailSettings, sessionUserId, viewUserId])
 
   useEffect(() => {
     sessionStorage.setItem(FARM_SELECTION_KEY, JSON.stringify(selectedFarmByWorkspace))
@@ -386,13 +432,38 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     selectedFarmByWorkspace,
     reveals,
     toasts,
-    signIn: () => {
-      setSessionUserId("mira")
-      setViewUserId(null)
+    liveMode,
+    ready,
+    signIn: async (email, password) => {
+      if (!liveMode) {
+        if (password === "wrong-password") return "failed"
+        setSessionUserId("mira")
+        setViewUserId("mira")
+        return "ok"
+      }
+      try {
+        const me = await apiLogin(email, password)
+        setUsers([me])
+        setSessionUserId(me.id)
+        setViewUserId(me.id)
+        const list = await apiWorkspaces()
+        setWorkspaces(list)
+        return "ok"
+      } catch {
+        return "failed"
+      }
     },
-    signOut: () => {
+    signOut: async () => {
+      if (liveMode) {
+        try {
+          await apiLogout()
+        } catch {
+          /* ignore */
+        }
+      }
       setSessionUserId(null)
       setViewUserId(null)
+      if (liveMode) setWorkspaces([])
     },
     setViewUser: (id) => setViewUserId(id),
     canOpen,
@@ -404,7 +475,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setSelectedFarm,
     farmByGameId,
     moduleAccess,
-    createWorkspace: (name) => {
+    createWorkspace: async (name) => {
+      if (liveMode) {
+        const result = await apiCreateWorkspace(name)
+        setWorkspaces((current) => [...current, result.workspace])
+        setReveals((current) => ({ ...current, [result.workspace.id]: result.pairingCode }))
+        return { workspace: result.workspace, code: result.pairingCode }
+      }
       const workspace: Workspace = {
         id: crypto.randomUUID(),
         number: workspaces.reduce((max, item) => Math.max(max, item.number), 0) + 1,

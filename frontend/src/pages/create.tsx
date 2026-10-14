@@ -7,7 +7,7 @@ import { useStore } from "../store"
 export function CreatePage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const { canCreateWorkspace, createWorkspace, hideCode, pushToast } = useStore()
+  const { canCreateWorkspace, createWorkspace, hideCode, pushToast, liveMode } = useStore()
   const [name, setName] = useState("")
   const [error, setError] = useState("")
   const [pending, setPending] = useState(false)
@@ -15,7 +15,7 @@ export function CreatePage() {
 
   if (!canCreateWorkspace()) return <Navigate to="/instances" replace />
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault()
     const trimmed = name.trim()
     if (!trimmed) {
@@ -32,12 +32,16 @@ export function CreatePage() {
     }
     setError("")
     setPending(true)
-    window.setTimeout(() => {
-      const result = createWorkspace(trimmed)
+    try {
+      const result = await createWorkspace(trimmed)
       setCreated({ id: result.workspace.id, name: result.workspace.name, code: result.code })
-      setPending(false)
       setName("")
-    }, 600)
+    } catch {
+      setError(t("create.nameRequired"))
+      pushToast("warn", t("create.nameRequired"))
+    } finally {
+      setPending(false)
+    }
   }
 
   if (created) {
@@ -47,7 +51,7 @@ export function CreatePage() {
         <p className="muted">{t("create.doneLead")}</p>
         <p className="hint">{created.name}</p>
         <p className="code">{created.code}</p>
-        <span className="badge">{t("demo")}</span>
+        {!liveMode ? <span className="badge">{t("demo")}</span> : null}
         <div className="page-actions">
           <button
             type="button"
@@ -101,7 +105,7 @@ export function CreatePage() {
           <p>{t("create.lead")}</p>
         </div>
       </div>
-      <form className="panel stack" onSubmit={submit} noValidate>
+      <form className="panel stack" onSubmit={(event) => void submit(event)} noValidate>
         <label className="field">
           <span>{t("create.name")}</span>
           <input

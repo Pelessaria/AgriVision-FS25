@@ -33,6 +33,8 @@ return [
             '.env',
             'storage',
             'bootstrap/cache',
+            // Never clobber the running Laravel front controller via a bad overlay.
+            'public/index.php',
         ],
         /** Path segments inside the zip that are never copied onto the host */
         'skip_zip_segments' => [

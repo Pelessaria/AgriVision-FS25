@@ -14,7 +14,14 @@ import { Shell } from "./shell"
 import { useStore } from "./store"
 
 function RequireAuth() {
-  const { sessionUserId } = useStore()
+  const { sessionUserId, ready } = useStore()
+  if (!ready) {
+    return (
+      <div className="app-boot" style={{ display: "grid", placeItems: "center", minHeight: "100vh" }}>
+        <span className="muted">…</span>
+      </div>
+    )
+  }
   if (!sessionUserId) return <Navigate to="/login" replace />
   return <Shell />
 }

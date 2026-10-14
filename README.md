@@ -36,9 +36,7 @@ npm install
 npm run dev
 ```
 
-Anmeldung im Prototyp: beliebige gültige E-Mail und ein Passwort mit mindestens 12 Zeichen. Das Passwort `wrong-password` zeigt den Fehlerzustand. Danach ist die Ansicht „Mira Albrecht“, Realm-Admin. Im Benutzermenü lässt sich die Demo-Rolle wechseln.
-
-`npm run lint` und `npm run build` prüfen den Prototyp. Der Build bleibt in `frontend/dist` und wird noch nicht von PHP ausgeliefert.
+Lokal (Vite-Demo ohne Laravel): beliebige gültige E-Mail und Passwort mit mindestens 8 Zeichen (`wrong-password` = Fehler). Auf dem Server: Login mit dem Admin-Konto aus dem Installer; die UI kommt aus `frontend/dist` → `public/agrivision.html`.
 
 ## VPS-Installation (Test / hinter NPM)
 

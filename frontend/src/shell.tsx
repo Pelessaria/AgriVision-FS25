@@ -75,6 +75,7 @@ export function Shell() {
     users,
     viewUserId,
     workspaces,
+    liveMode,
   } = useStore()
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("fs25.sidebar") === "collapsed")
   const [drawer, setDrawer] = useState(false)
@@ -269,9 +270,11 @@ export function Shell() {
               )}
             </div>
             <div className="header-actions">
-              <span className="demo-chip" title={t("demoBanner")}>
-                {t("demo")}
-              </span>
+              {!liveMode ? (
+                <span className="demo-chip" title={t("demoBanner")}>
+                  {t("demo")}
+                </span>
+              ) : null}
               <button
                 type="button"
                 className="btn btn-ghost btn-icon mobile-only"
@@ -411,8 +414,7 @@ export function Shell() {
                       <button
                         type="button"
                         onClick={() => {
-                          signOut()
-                          navigate("/login")
+                          void signOut().then(() => navigate("/login"))
                         }}
                       >
                         <LogOut className="icon" />

@@ -134,20 +134,22 @@ final class GithubUpdateService
         }
         $zip->close();
 
+        // Never touch secrets / runtime while overlaying application code.
         $backendRoot = $this->locateBackendRoot($extractPath);
         $filesWritten = $this->overlayDirectory($backendRoot, base_path());
 
         $frontendDist = $this->locateFrontendDist($extractPath);
         if ($frontendDist !== null) {
-            $filesWritten += $this->overlayDirectory($frontendDist, public_path('app'));
+            $filesWritten += $this->deploySpa($frontendDist);
         }
+
+        $this->fixWebPermissions();
 
         $migrationsRan = false;
         try {
             Artisan::call('migrate', ['--force' => true]);
             $migrationsRan = true;
         } catch (Throwable $e) {
-            // Overlay already applied; surface migration failure clearly.
             $this->writeState([
                 'sha' => $toSha,
                 'installedAt' => gmdate('c'),
@@ -169,6 +171,12 @@ final class GithubUpdateService
             // Optional on constrained hosts.
         }
 
+        // Re-assert APP_KEY still present after overlay.
+        $envPath = base_path('.env');
+        if (! File::exists($envPath) || ! preg_match('/^APP_KEY=base64:.+/m', (string) File::get($envPath))) {
+            throw new RuntimeException('Update aborted post-check: APP_KEY missing in .env (env was preserved; check file manually).');
+        }
+
         $this->writeState([
             'sha' => $toSha,
             'installedAt' => gmdate('c'),
@@ -188,8 +196,55 @@ final class GithubUpdateService
             'toSha' => $toSha,
             'filesWritten' => $filesWritten,
             'migrationsRan' => $migrationsRan,
-            'message' => 'Update applied from GitHub.',
+            'message' => 'Update applied safely (.env/storage preserved, SPA redeployed).',
         ];
+    }
+
+    /**
+     * Place Vite build at public/agrivision.html + public/assets (never overwrite public/index.php).
+     */
+    private function deploySpa(string $distPath): int
+    {
+        $written = 0;
+        $assets = $distPath.DIRECTORY_SEPARATOR.'assets';
+        if (File::isDirectory($assets)) {
+            $written += $this->overlayDirectory($assets, public_path('assets'));
+        }
+
+        foreach (['favicon.svg', 'favicon-light.svg', 'logo.svg'] as $file) {
+            $src = $distPath.DIRECTORY_SEPARATOR.$file;
+            if (File::exists($src)) {
+                File::copy($src, public_path($file));
+                $written++;
+            }
+        }
+
+        $index = $distPath.DIRECTORY_SEPARATOR.'index.html';
+        if (File::exists($index)) {
+            File::copy($index, public_path('agrivision.html'));
+            $written++;
+        }
+
+        return $written;
+    }
+
+    private function fixWebPermissions(): void
+    {
+        $env = base_path('.env');
+        if (File::exists($env)) {
+            @chmod($env, 0640);
+        }
+
+        foreach ([storage_path(), base_path('bootstrap/cache')] as $dir) {
+            if (! File::isDirectory($dir)) {
+                continue;
+            }
+            try {
+                File::chmod($dir, 0775);
+            } catch (Throwable) {
+                // Host may forbid chmod.
+            }
+        }
     }
 
     /**

@@ -9,8 +9,12 @@ use Throwable;
 
 class SystemUpdateController extends Controller
 {
-    public function status(GithubUpdateService $updates): JsonResponse
+    public function status(Request $request, GithubUpdateService $updates): JsonResponse
     {
+        if (! $this->isAdmin($request)) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
         try {
             return response()->json($updates->status());
         } catch (Throwable $e) {
@@ -23,12 +27,14 @@ class SystemUpdateController extends Controller
 
     public function apply(Request $request, GithubUpdateService $updates): JsonResponse
     {
+        if (! $this->isAdmin($request)) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
         if (! config('agrivision.updates.enabled')) {
             return response()->json(['ok' => false, 'error' => 'Updates are disabled.'], 403);
         }
 
-        // Realm-admin session auth lands with the installer. Until then, require
-        // an explicit confirm flag so the endpoint is never a silent one-click.
         if (! $request->boolean('confirm')) {
             return response()->json([
                 'ok' => false,
@@ -46,5 +52,17 @@ class SystemUpdateController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function isAdmin(Request $request): bool
+    {
+        $user = $request->user();
+        if (! $user) {
+            return false;
+        }
+
+        $role = (string) ($user->global_role ?? 'admin');
+
+        return $role === 'admin' || $role === 'realm_admin';
     }
 }

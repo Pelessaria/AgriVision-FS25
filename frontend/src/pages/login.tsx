@@ -16,7 +16,7 @@ function chooseLocale(lng: "de" | "en") {
 export function LoginPage() {
   const { t, i18n: current } = useTranslation()
   const navigate = useNavigate()
-  const { sessionUserId, signIn } = useStore()
+  const { sessionUserId, signIn, liveMode, ready } = useStore()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [emailError, setEmailError] = useState("")
@@ -24,26 +24,37 @@ export function LoginPage() {
   const [formError, setFormError] = useState("")
   const [pending, setPending] = useState(false)
 
+  if (!ready) {
+    return (
+      <div className="login">
+        <section className="login-panel" style={{ display: "grid", placeItems: "center" }}>
+          <LoaderCircle className="icon spin" aria-label={t("login.submitting")} />
+        </section>
+      </div>
+    )
+  }
+
   if (sessionUserId) return <Navigate to="/" replace />
 
-  function submit(event: FormEvent) {
+  async function submit(event: FormEvent) {
     event.preventDefault()
     const nextEmail = isEmail(email) ? "" : t("login.emailInvalid")
-    const nextPassword = password.length >= 12 ? "" : t("login.passwordShort")
+    const nextPassword = password.length >= 8 ? "" : t("login.passwordShort")
     setEmailError(nextEmail)
     setPasswordError(nextPassword)
     setFormError("")
     if (nextEmail || nextPassword) return
     setPending(true)
-    window.setTimeout(() => {
-      if (password === "wrong-password") {
+    try {
+      const result = await signIn(email.trim(), password)
+      if (result === "failed") {
         setFormError(t("login.failed"))
-        setPending(false)
         return
       }
-      signIn()
       navigate("/")
-    }, 700)
+    } finally {
+      setPending(false)
+    }
   }
 
   return (
@@ -55,10 +66,10 @@ export function LoginPage() {
           <h1>{t("appName")}</h1>
           <p className="lead">{t("login.lead")}</p>
         </div>
-        <p className="hint">{t("demoBanner")}</p>
+        {!liveMode ? <p className="hint">{t("demoBanner")}</p> : null}
       </aside>
       <section className="login-panel">
-        <form className="login-card" onSubmit={submit} noValidate>
+        <form className="login-card" onSubmit={(event) => void submit(event)} noValidate>
           <div className="login-tools">
             <div className="lang" role="group" aria-label={t("language")}>
               <button type="button" aria-pressed={current.language !== "en"} aria-label={t("german")} onClick={() => chooseLocale("de")}>
@@ -96,7 +107,11 @@ export function LoginPage() {
                 aria-invalid={passwordError ? true : undefined}
                 onChange={(event) => setPassword(event.target.value)}
               />
-              {passwordError ? <span className="field-error">{passwordError}</span> : <span className="hint">{t("login.hint")}</span>}
+              {passwordError ? (
+                <span className="field-error">{passwordError}</span>
+              ) : !liveMode ? (
+                <span className="hint">{t("login.hint")}</span>
+              ) : null}
             </label>
             <button className="btn btn-primary" type="submit" disabled={pending}>
               {pending ? <LoaderCircle className="icon spin" /> : null}
