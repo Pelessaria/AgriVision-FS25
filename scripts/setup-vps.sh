@@ -666,16 +666,16 @@ if ! grep -qE '^APP_KEY=base64:.+' .env; then
   die "APP_KEY missing after key:generate. Check .env write permissions."
 fi
 
-log "Writable dirs"
+log "Writable dirs + ownership for in-app updates"
 mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views
 mkdir -p storage/logs storage/app/public bootstrap/cache
 chmod -R ug+rwx storage bootstrap/cache || true
-# www-data must read .env (root-only 600 causes MissingAppKeyException / HTTP 500)
+# php-fpm must own the Laravel tree so /api/system/update can overlay files.
+# Root-owned installs cause: copy(...): Permission denied
 web_user="www-data"
 id -u nginx >/dev/null 2>&1 && web_user="nginx"
 if id -u "$web_user" >/dev/null 2>&1; then
-  run_root chown -R "$web_user":"$web_user" storage bootstrap/cache || true
-  run_root chown root:"$web_user" .env || true
+  run_root chown -R "$web_user":"$web_user" "$BACKEND" || true
   run_root chmod 640 .env || true
 fi
 
@@ -710,6 +710,12 @@ fi
 
 if ! deploy_frontend; then
   log "No frontend/dist found - Laravel welcome page will show until UI is deployed"
+fi
+
+# Re-assert ownership after root copies into public/
+if id -u "${web_user:-www-data}" >/dev/null 2>&1; then
+  run_root chown -R "${web_user:-www-data}:${web_user:-www-data}" "$BACKEND" || true
+  run_root chmod 640 "${BACKEND}/.env" || true
 fi
 
 if [[ "$MIGRATE" -eq 1 ]]; then
@@ -761,9 +767,15 @@ fi
 
 cat <<EOF
 
-Updates later:
-  cd ${BACKEND} && ${PHP_BIN} artisan agrivision:update --check
-  cd ${BACKEND} && ${PHP_BIN} artisan agrivision:update --apply
+Updates later (always from backend/):
+  cd ${BACKEND}
+  ${PHP_BIN} artisan migrate --force
+  ${PHP_BIN} artisan agrivision:update --check
+  ${PHP_BIN} artisan agrivision:update --apply
+
+If in-app Update says Permission denied:
+  chown -R ${web_user:-www-data}:${web_user:-www-data} ${BACKEND}
+  chmod 640 ${BACKEND}/.env
 
 Repo: https://github.com/${OWNER}/${REPO}
 --------------------------------------------------

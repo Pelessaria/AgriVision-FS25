@@ -389,12 +389,45 @@ final class GithubUpdateService
                 continue;
             }
 
-            File::ensureDirectoryExists(dirname($target));
-            File::copy($file->getPathname(), $target);
+            $this->copyOverlayFile($file->getPathname(), $target, $relative);
             $written++;
         }
 
         return $written;
+    }
+
+    private function copyOverlayFile(string $from, string $to, string $relative): void
+    {
+        $dir = dirname($to);
+        File::ensureDirectoryExists($dir);
+
+        if (! is_writable($dir)) {
+            throw new RuntimeException($this->permissionHint("directory not writable: {$dir}"));
+        }
+
+        if (File::exists($to) && ! is_writable($to)) {
+            @chmod($to, 0664);
+        }
+
+        if (File::exists($to) && ! is_writable($to)) {
+            throw new RuntimeException($this->permissionHint("file not writable: {$relative}"));
+        }
+
+        if (! @copy($from, $to)) {
+            $err = error_get_last()['message'] ?? 'copy failed';
+            throw new RuntimeException($this->permissionHint("{$err} ({$relative})"));
+        }
+    }
+
+    private function permissionHint(string $detail): string
+    {
+        $backend = base_path();
+
+        return "Update permission denied ({$detail}). "
+            .'As root run: chown -R www-data:www-data '.escapeshellarg($backend)
+            .' && chmod 640 '.escapeshellarg($backend.'/.env')
+            .' && cd '.escapeshellarg($backend)
+            .' && sudo -u www-data php artisan agrivision:update --apply';
     }
 
     private function isPreservedRelative(string $relative): bool

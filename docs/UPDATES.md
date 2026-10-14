@@ -45,9 +45,15 @@ Einstellungen → **Update** (nur globaler Admin, Session + CSRF):
 ## CLI (Shell optional)
 
 ```bash
-cd /var/www/agrivision   # Installationswurzel
+# Laravel liegt unter …/backend (nicht in der Repo-Wurzel)
+cd /var/www/agrivision/backend
 php artisan agrivision:update --check
 php artisan agrivision:update --apply
+
+# Wenn die Web-UI „Permission denied“ meldet (Dateien gehören root):
+sudo chown -R www-data:www-data /var/www/agrivision/backend
+sudo chmod 640 /var/www/agrivision/backend/.env
+sudo -u www-data php artisan agrivision:update --apply
 ```
 
 ## API
