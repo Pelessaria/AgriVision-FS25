@@ -35,7 +35,7 @@ export const de = {
   },
   farm: {
     switch: "Hof",
-    savegameId: "Savegame-ID {{id}}",
+    savegameId: "Hof-ID {{id}}",
     stubName: "Hof {{id}}",
     none: "Noch keine Höfe erkannt",
     noneTitle: "Noch keine Höfe",

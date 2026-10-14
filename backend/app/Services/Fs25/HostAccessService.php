@@ -3,6 +3,7 @@
 namespace App\Services\Fs25;
 
 use App\Models\GameFarm;
+use App\Support\GameFarms;
 use App\Models\HostAccess;
 use App\Models\Workspace;
 use App\Models\WorkspaceSavegame;
@@ -341,6 +342,7 @@ final class HostAccessService
             ->update(['is_active' => false]);
         $active->is_active = true;
         $active->save();
+        GameFarms::adoptNullStubs($workspace, (int) $active->id);
     }
 
     private function refreshSavegameStatus(HostFileClient $client, WorkspaceSavegame $row): void
@@ -423,7 +425,16 @@ final class HostAccessService
                 $row->money = $farm['money'];
             }
             $row->save();
+
+            // Remove legacy feed stubs for the same farm id.
+            GameFarm::query()
+                ->where('workspace_id', $workspace->id)
+                ->where('game_farm_id', $id)
+                ->whereNull('workspace_savegame_id')
+                ->delete();
         }
+
+        GameFarms::purgeDuplicateStubs($workspace);
     }
 
     /**
@@ -433,38 +444,7 @@ final class HostAccessService
      */
     public function serializeFarms(Workspace $workspace): array
     {
-        $active = WorkspaceSavegame::query()
-            ->where('workspace_id', $workspace->id)
-            ->where('is_active', true)
-            ->first();
-
-        $query = GameFarm::query()->where('workspace_id', $workspace->id);
-        if ($active) {
-            $query->where(function ($q) use ($active) {
-                $q->where('workspace_savegame_id', $active->id)
-                    ->orWhereNull('workspace_savegame_id');
-            });
-        }
-
-        return $query
-            ->orderBy('game_farm_id')
-            ->get()
-            ->map(static function (GameFarm $farm) use ($workspace): array {
-                return [
-                    'id' => $workspace->public_id.'-f'.$farm->game_farm_id
-                        .($farm->workspace_savegame_id ? '-s'.$farm->workspace_savegame_id : ''),
-                    'workspaceId' => $workspace->public_id,
-                    'savegameId' => $farm->workspace_savegame_id,
-                    'gameFarmId' => $farm->game_farm_id,
-                    'name' => $farm->display_name,
-                    'money' => $farm->money,
-                    'hectares' => $farm->hectares,
-                    'animals' => $farm->animals,
-                    'storageFill' => $farm->storage_fill,
-                ];
-            })
-            ->values()
-            ->all();
+        return GameFarms::serialize($workspace);
     }
 
     private function defaultSavegameLabel(string $slot): string

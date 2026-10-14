@@ -3,6 +3,7 @@
 namespace App\Services\Fs25;
 
 use App\Models\GameFarm;
+use App\Support\GameFarms;
 use App\Models\Workspace;
 use App\Models\WorkspaceSavegame;
 use InvalidArgumentException;
@@ -247,19 +248,51 @@ final class WorkspaceFeedService
             ->where('workspace_id', $workspace->id)
             ->where('is_active', true)
             ->value('id');
+        $activeSavegameId = $activeSavegameId !== null ? (int) $activeSavegameId : null;
+
+        GameFarms::purgeDuplicateStubs($workspace);
 
         foreach ($ids as $gameFarmId) {
-            GameFarm::query()->firstOrCreate(
-                [
-                    'workspace_id' => $workspace->id,
-                    'workspace_savegame_id' => $activeSavegameId,
-                    'game_farm_id' => $gameFarmId,
-                ],
-                [
-                    'display_name' => null,
-                    'money' => null,
-                ]
-            );
+            $existing = GameFarm::query()
+                ->where('workspace_id', $workspace->id)
+                ->where('game_farm_id', $gameFarmId)
+                ->where(function ($q) use ($activeSavegameId) {
+                    if ($activeSavegameId !== null) {
+                        $q->where('workspace_savegame_id', $activeSavegameId)
+                            ->orWhereNull('workspace_savegame_id');
+                    } else {
+                        $q->whereNull('workspace_savegame_id');
+                    }
+                })
+                ->orderByRaw('CASE WHEN workspace_savegame_id IS NULL THEN 1 ELSE 0 END')
+                ->first();
+
+            if ($existing) {
+                if ($activeSavegameId !== null && $existing->workspace_savegame_id === null) {
+                    // Claim legacy stub for active slot; collapse if a named row already exists.
+                    $named = GameFarm::query()
+                        ->where('workspace_id', $workspace->id)
+                        ->where('workspace_savegame_id', $activeSavegameId)
+                        ->where('game_farm_id', $gameFarmId)
+                        ->first();
+                    if ($named) {
+                        $existing->delete();
+                    } else {
+                        $existing->workspace_savegame_id = $activeSavegameId;
+                        $existing->save();
+                    }
+                }
+
+                continue;
+            }
+
+            GameFarm::query()->create([
+                'workspace_id' => $workspace->id,
+                'workspace_savegame_id' => $activeSavegameId,
+                'game_farm_id' => $gameFarmId,
+                'display_name' => null,
+                'money' => null,
+            ]);
         }
 
         if ($ids === []) {
@@ -298,24 +331,7 @@ final class WorkspaceFeedService
      */
     private function serializeFarms(Workspace $workspace): array
     {
-        return GameFarm::query()
-            ->where('workspace_id', $workspace->id)
-            ->orderBy('game_farm_id')
-            ->get()
-            ->map(static function (GameFarm $farm) use ($workspace): array {
-                return [
-                    'id' => $workspace->public_id.'-f'.$farm->game_farm_id,
-                    'workspaceId' => $workspace->public_id,
-                    'gameFarmId' => $farm->game_farm_id,
-                    'name' => $farm->display_name,
-                    'money' => $farm->money,
-                    'hectares' => $farm->hectares,
-                    'animals' => $farm->animals,
-                    'storageFill' => $farm->storage_fill,
-                ];
-            })
-            ->values()
-            ->all();
+        return GameFarms::serialize($workspace);
     }
 
     private static function mapVehicleCategory(?string $category, ?string $type): string

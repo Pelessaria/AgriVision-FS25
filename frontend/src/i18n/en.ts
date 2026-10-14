@@ -37,7 +37,7 @@ export const en = {
   },
   farm: {
     switch: "Farm",
-    savegameId: "Savegame ID {{id}}",
+    savegameId: "Farm ID {{id}}",
     stubName: "Farm {{id}}",
     none: "No farms detected yet",
     noneTitle: "No farms yet",
