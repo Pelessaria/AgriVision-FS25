@@ -6,21 +6,21 @@ use App\Models\Workspace;
 use Illuminate\Support\Facades\File;
 
 /**
- * Serve cached mod store icons for the equipment UI.
+ * Local cache of vehicle store icons (and later mod-pack icons).
  *
- * Icons come from the connector (modSettings/.../icons) after it runs.
- * Never download full mods/*.zip over FTP — that fills disk and stalls the UI.
+ * Files are filled by ConnectorSnapshotService::syncStoreIconsIfDue from
+ * modSettings/.../icons/store. Never download full mods/*.zip over FTP.
  */
 final class ModIconCacheService
 {
     /**
-     * @param  list<string>  $modKeys
+     * @param  list<string>  $keys
      * @return array<string, true>
      */
-    public function ensure(Workspace $workspace, array $modKeys): array
+    public function ensure(Workspace $workspace, array $keys): array
     {
         $ready = [];
-        foreach ($modKeys as $key) {
+        foreach ($keys as $key) {
             if (! is_string($key) || $key === '') {
                 continue;
             }
@@ -32,9 +32,9 @@ final class ModIconCacheService
         return $ready;
     }
 
-    public function localPath(Workspace $workspace, string $modKey): ?string
+    public function localPath(Workspace $workspace, string $key): ?string
     {
-        $safe = $this->safeKey($modKey);
+        $safe = $this->safeKey($key);
         $dir = $this->cacheDir($workspace);
         foreach (['png', 'jpg', 'jpeg', 'webp'] as $ext) {
             $path = $dir.'/'.$safe.'.'.$ext;
@@ -46,10 +46,10 @@ final class ModIconCacheService
         return null;
     }
 
-    public function publicUrl(Workspace $workspace, string $modKey): string
+    public function publicUrl(Workspace $workspace, string $key): string
     {
         return '/api/workspaces/'.rawurlencode($workspace->public_id)
-            .'/connector/icons/'.rawurlencode($modKey);
+            .'/connector/icons/'.rawurlencode($key);
     }
 
     public function cacheDir(Workspace $workspace): string
@@ -57,15 +57,15 @@ final class ModIconCacheService
         return storage_path('app/connector/'.$workspace->public_id.'/icons');
     }
 
-    public function putPng(Workspace $workspace, string $modKey, string $pngBytes): void
+    public function putPng(Workspace $workspace, string $key, string $pngBytes): void
     {
         $dir = $this->cacheDir($workspace);
         File::ensureDirectoryExists($dir);
-        File::put($dir.'/'.$this->safeKey($modKey).'.png', $pngBytes);
+        File::put($dir.'/'.$this->safeKey($key).'.png', $pngBytes);
     }
 
-    private function safeKey(string $modKey): string
+    private function safeKey(string $key): string
     {
-        return preg_replace('/[^a-zA-Z0-9._-]+/', '_', $modKey) ?? 'icon';
+        return preg_replace('/[^a-zA-Z0-9._-]+/', '_', $key) ?? 'icon';
     }
 }

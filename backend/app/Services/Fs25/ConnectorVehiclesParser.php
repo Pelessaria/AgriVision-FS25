@@ -3,7 +3,7 @@
 namespace App\Services\Fs25;
 
 /**
- * Parse connector state/vehicles_full.xml (uniqueId + farmId + modKey).
+ * Parse connector state/vehicles_full.xml (uniqueId + farmId + storeKey/modKey).
  */
 final class ConnectorVehiclesParser
 {
@@ -16,6 +16,7 @@ final class ConnectorVehiclesParser
      *   name: string|null,
      *   category: string|null,
      *   operatingTime: float|null,
+     *   storeKey: string|null,
      *   modKey: string|null,
      *   x: float|null,
      *   y: float|null,
@@ -39,6 +40,7 @@ final class ConnectorVehiclesParser
             $filename = self::attr($attrBlob, 'filename');
             $name = self::attr($attrBlob, 'name');
             $category = self::attr($attrBlob, 'category');
+            $storeKey = self::attr($attrBlob, 'storeKey') ?? StoreKey::fromFilename($filename);
             $modKey = self::attr($attrBlob, 'modKey');
             $operatingTime = self::floatAttr($attrBlob, 'operatingTime');
             $x = self::floatAttr($attrBlob, 'x');
@@ -53,6 +55,7 @@ final class ConnectorVehiclesParser
                 'name' => $name,
                 'category' => $category,
                 'operatingTime' => $operatingTime,
+                'storeKey' => $storeKey,
                 'modKey' => $modKey,
                 'x' => $x,
                 'y' => $y,

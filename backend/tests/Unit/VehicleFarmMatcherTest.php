@@ -116,10 +116,11 @@ class VehicleFarmMatcherTest extends TestCase
 
     public function test_parses_connector_vehicles_full(): void
     {
-        $xml = '<vehiclesFull><vehicle uniqueId="u1" farmId="2" filename="x.xml" name="Tool" modKey="k1" operatingTime="4" x="1" y="2" z="3" /></vehiclesFull>';
+        $xml = '<vehiclesFull><vehicle uniqueId="u1" farmId="2" filename="data/vehicles/fendt/x.xml" name="Tool" storeKey="data_vehicles_fendt_x" modKey="k1" operatingTime="4" x="1" y="2" z="3" /></vehiclesFull>';
         $parsed = ConnectorVehiclesParser::parse($xml);
         $this->assertCount(1, $parsed);
         $this->assertSame(2, $parsed[0]['farmId']);
+        $this->assertSame('data_vehicles_fendt_x', $parsed[0]['storeKey']);
         $this->assertSame('k1', $parsed[0]['modKey']);
         $this->assertSame('Tool', $parsed[0]['name']);
     }

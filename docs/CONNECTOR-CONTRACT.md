@@ -12,8 +12,9 @@ modSettings/FS25_AgriVisionConnector/
   hello.xml                 # v0: Lebenszeichen + Höfe
   state/vehicles_full.xml   # voller Fahrzeugbestand (Initial / nach Save-Reload)
   state/vehicles_delta.xml  # optionale Positions-/Fill-Deltas
-  state/icons_manifest.xml  # welche Mod-Icons aktuell gültig sind
-  icons/<modKey>.png        # extrahierte Icons (oder .dds → konvertiert im Backend)
+  state/icons_manifest.xml  # Store-Icons der Fahrzeuge im Save (kind=store)
+  icons/store/<storeKey>.*  # Fahrzeug-StoreIcons (DDS/PNG; Backend → PNG)
+  icons/mods/<modKey>.*     # später: Mod-Pack-Icons (nicht für Fahrzeugliste)
   command.xml               # Aufträge vom Backend
   command_result.xml        # Antworten des Mods
 ```
@@ -39,7 +40,8 @@ Atomar schreiben wo möglich: `*.tmp` → Zielname, sonst `generation`-Attribut 
 | --- | --- |
 | `gameFarmId` | Hof-ID im Savegame (1…n), Workspace-lokal |
 | `vehicleUniqueId` | Savegame-`uniqueId` |
-| `modKey` | stabiler Icon-/Mod-Schlüssel: bevorzugt Mod-Hash aus dem Feed, sonst `author__name__version` normalisiert |
+| `storeKey` | stabiler Schlüssel fürs Fahrzeug-StoreIcon (normalisierter Config-Pfad) |
+| `modKey` | Mod-Pack-Schlüssel (später Modliste); nicht für Fahrzeug-Übersicht |
 | `filename` | Fahrzeug-`filename` aus Savegame (für Typ/Icon-Zuordnung) |
 
 Fehlende optionale Felder = Dashboard zeigt „nicht verfügbar“, nie erfundene Werte.
@@ -71,23 +73,24 @@ Fehlende optionale Felder = Dashboard zeigt „nicht verfügbar“, nie erfunden
     name="…"
     category="tractor"
     operatingTime="312.5"
-    modKey="abc123hash"
+    storeKey="data_vehicles_fendt_vario900_vario900"
+    modKey="FS25_SomeMod"
     x="1" y="2" z="3"
   />
 </vehiclesFull>
 ```
 
-`modKey` verknüpft mit `icons_manifest` / Icon-Datei. Position optional, wenn nur Savegame-Meta vorliegt (Feed kann Position später mergen).
+`storeKey` verknüpft mit Store-Icon-Datei. `modKey` optional für spätere Modliste. Position optional, wenn nur Savegame-Meta vorliegt (Feed kann Position später mergen).
 
 ### 4.3 `state/icons_manifest.xml`
 
 ```xml
-<iconsManifest schema="1" generation="1" writtenAtUtc="…" scan="startup">
-  <mod key="abc123hash" name="FS25_SomeMod" author="…" version="1.0.0.0" iconFile="icons/abc123hash.png" />
+<iconsManifest schema="1" generation="1" writtenAtUtc="…" scan="vehicles" kind="store">
+  <store key="data_vehicles_fendt_vario900_vario900" filename="data/vehicles/…" iconFile="icons/store/….dds" />
 </iconsManifest>
 ```
 
-Backend: Manifest ist Quelle der Wahrheit. Dateien unter `icons/`, die nicht im Manifest stehen, werden gelöscht.
+Backend: Manifest ist Quelle der Wahrheit für Store-Icons. Sync ist gedrosselt (Skip wenn lokal vorhanden; nicht bei jedem Page-Load / Image-Request).
 
 ### 4.4 `command.xml` / `command_result.xml` (v0)
 

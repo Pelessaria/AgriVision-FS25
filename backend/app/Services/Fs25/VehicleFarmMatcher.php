@@ -15,8 +15,8 @@ final class VehicleFarmMatcher
 
     /**
      * @param  list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null}>  $statsVehicles
-     * @param  list<array{uniqueId: string|null, farmId: int|null, filename: string|null, nameHint: string|null, operatingTime: float|null, x: float|null, y: float|null, z: float|null, modKey?: string|null, name?: string|null, category?: string|null}>  $metaVehicles
-     * @return list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null, farmId: int|null, uniqueId: string|null, hours: float|null, filename: string|null, modKey: string|null}>
+     * @param  list<array{uniqueId: string|null, farmId: int|null, filename: string|null, nameHint: string|null, operatingTime: float|null, x: float|null, y: float|null, z: float|null, storeKey?: string|null, modKey?: string|null, name?: string|null, category?: string|null}>  $metaVehicles
+     * @return list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null, farmId: int|null, uniqueId: string|null, hours: float|null, filename: string|null, storeKey: string|null, modKey: string|null}>
      */
     public static function mergeInventory(array $statsVehicles, array $metaVehicles): array
     {
@@ -56,6 +56,7 @@ final class VehicleFarmMatcher
             $stats = $match[$mi] ?? null;
             $hint = $meta['nameHint'] ?? VehiclesXmlParser::nameHintFromFilename($meta['filename'] ?? null);
             $name = $stats['name'] ?? $meta['name'] ?? $hint;
+            $filename = $meta['filename'] ?? null;
             $out[] = [
                 'name' => $name,
                 'category' => $stats['category'] ?? ($meta['category'] ?? null),
@@ -68,7 +69,8 @@ final class VehicleFarmMatcher
                 'hours' => isset($meta['operatingTime']) && is_numeric($meta['operatingTime'])
                     ? round((float) $meta['operatingTime'], 1)
                     : null,
-                'filename' => $meta['filename'] ?? null,
+                'filename' => $filename,
+                'storeKey' => $meta['storeKey'] ?? StoreKey::fromFilename(is_string($filename) ? $filename : null),
                 'modKey' => $meta['modKey'] ?? null,
             ];
         }
@@ -81,7 +83,7 @@ final class VehicleFarmMatcher
      *
      * @param  list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null}>  $statsVehicles
      * @param  list<array{uniqueId: string|null, farmId: int|null, filename: string|null, nameHint: string|null, operatingTime: float|null, x: float|null, y: float|null, z: float|null}>  $saveVehicles
-     * @return list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null, farmId: int|null, uniqueId: string|null, hours: float|null, filename: string|null, modKey: string|null}>
+     * @return list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null, farmId: int|null, uniqueId: string|null, hours: float|null, filename: string|null, storeKey: string|null, modKey: string|null}>
      */
     public static function enrich(array $statsVehicles, array $saveVehicles): array
     {
@@ -94,7 +96,7 @@ final class VehicleFarmMatcher
 
     /**
      * @param  list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null}>  $statsVehicles
-     * @return list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null, farmId: int|null, uniqueId: string|null, hours: float|null, filename: string|null, modKey: string|null}>
+     * @return list<array{name: string|null, category: string|null, type: string|null, x: float|null, y: float|null, z: float|null, farmId: int|null, uniqueId: string|null, hours: float|null, filename: string|null, storeKey: string|null, modKey: string|null}>
      */
     private static function statsOnly(array $statsVehicles): array
     {
@@ -111,6 +113,7 @@ final class VehicleFarmMatcher
                 'uniqueId' => null,
                 'hours' => null,
                 'filename' => null,
+                'storeKey' => null,
                 'modKey' => null,
             ];
         }

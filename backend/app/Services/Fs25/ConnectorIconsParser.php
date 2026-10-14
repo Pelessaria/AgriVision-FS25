@@ -3,37 +3,40 @@
 namespace App\Services\Fs25;
 
 /**
- * Parse connector state/icons_manifest.xml.
+ * Parse connector state/icons_manifest.xml (store icons; legacy <mod> still accepted).
  */
 final class ConnectorIconsParser
 {
     /**
-     * @return list<array{key: string, name: string|null, author: string|null, version: string|null, iconFile: string}>
+     * @return list<array{key: string, name: string|null, author: string|null, version: string|null, iconFile: string, kind: string}>
      */
     public static function parse(string $xml): array
     {
         $xml = trim($xml);
-        if ($xml === '' || ! preg_match_all('/<mod\b([^>]*)\/?>/i', $xml, $matches)) {
+        if ($xml === '' || ! preg_match_all('/<(store|mod)\b([^>]*)\/?>/i', $xml, $matches, PREG_SET_ORDER)) {
             return [];
         }
 
-        $mods = [];
-        foreach ($matches[1] as $attrBlob) {
+        $entries = [];
+        foreach ($matches as $match) {
+            $kind = strtolower($match[1]);
+            $attrBlob = $match[2];
             $key = self::attr($attrBlob, 'key');
             $iconFile = self::attr($attrBlob, 'iconFile');
             if ($key === null || $iconFile === null) {
                 continue;
             }
-            $mods[] = [
+            $entries[] = [
                 'key' => $key,
-                'name' => self::attr($attrBlob, 'name'),
+                'name' => self::attr($attrBlob, 'name') ?? self::attr($attrBlob, 'filename'),
                 'author' => self::attr($attrBlob, 'author'),
                 'version' => self::attr($attrBlob, 'version'),
                 'iconFile' => $iconFile,
+                'kind' => $kind === 'store' ? 'store' : 'mod',
             ];
         }
 
-        return $mods;
+        return $entries;
     }
 
     private static function attr(string $blob, string $key): ?string

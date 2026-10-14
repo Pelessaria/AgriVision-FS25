@@ -22,16 +22,18 @@ if (Test-Path $zip) { Remove-Item $zip -Force }
 
 $archive = [System.IO.Compression.ZipFile]::Open($zip, [System.IO.Compression.ZipArchiveMode]::Create)
 try {
-  Get-ChildItem -Path $src -Recurse -File | ForEach-Object {
-    $relative = $_.FullName.Substring($src.Length).TrimStart('\', '/')
-    $entryName = ($relative -replace '\\', '/')
-    [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
-      $archive,
-      $_.FullName,
-      $entryName,
-      [System.IO.Compression.CompressionLevel]::Optimal
-    )
-  }
+  Get-ChildItem -Path $src -Recurse -File |
+    Where-Object { $_.FullName -notmatch '[\\/]src[\\/]' } |
+    ForEach-Object {
+      $relative = $_.FullName.Substring($src.Length).TrimStart('\', '/')
+      $entryName = ($relative -replace '\\', '/')
+      [void][System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+        $archive,
+        $_.FullName,
+        $entryName,
+        [System.IO.Compression.CompressionLevel]::Optimal
+      )
+    }
 } finally {
   $archive.Dispose()
 }

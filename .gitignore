@@ -48,3 +48,6 @@ composer-setup.php.*
 
 # Connector build artifacts stay tracked under connector/dist for probe installs
 # (ZIP contains no secrets)
+
+# Local research / GDN dumps — never ship
+dev_stuff/

@@ -19,6 +19,9 @@ export type ConnectorVehicleSnapshot = {
   name: string | null
   category: string | null
   operatingTime: number | null
+  /** Vehicle store-image key (type-level). */
+  storeKey: string | null
+  /** Mod pack key — later for mod list UI. */
   modKey: string | null
   x: number | null
   y: number | null
@@ -26,12 +29,14 @@ export type ConnectorVehicleSnapshot = {
 }
 
 export type ConnectorIconEntry = {
-  modKey: string
+  /** storeKey for vehicle icons, or modKey for deferred mod-pack icons. */
+  key: string
   name: string
   author: string | null
   version: string | null
-  /** Relative path under modSettings connector folder, e.g. icons/abc.png */
+  /** Relative path under modSettings connector folder, e.g. icons/store/….png */
   iconFile: string
+  kind?: "store" | "mod"
 }
 
 export type ConnectorHello = {
@@ -55,7 +60,8 @@ export type IconsManifest = {
   schema: string
   generation: number
   writtenAtUtc: string
-  scan: "startup" | "modlist-changed"
+  scan: "startup" | "modlist-changed" | "vehicles"
+  kind?: "store" | "mod"
   mods: ConnectorIconEntry[]
 }
 

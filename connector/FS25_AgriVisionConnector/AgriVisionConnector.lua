@@ -12,7 +12,7 @@
 
 AgriVisionConnector = {}
 AgriVisionConnector.MOD_NAME = "FS25_AgriVisionConnector"
-AgriVisionConnector.VERSION = "0.1.2.2"
+AgriVisionConnector.VERSION = "0.1.2.3"
 AgriVisionConnector.SCHEMA = "1"
 AgriVisionConnector.TICK_MS = 5000
 AgriVisionConnector.FULL_VEHICLE_EVERY_MS = 60000
@@ -52,16 +52,20 @@ function AgriVisionConnector:init()
     self.baseDir = profile .. "modSettings/" .. self.MOD_NAME .. "/"
     self.stateDir = self.baseDir .. "state/"
     self.iconsDir = self.baseDir .. "icons/"
+    self.storeIconsDir = self.iconsDir .. "store/"
+    self.modIconsDir = self.iconsDir .. "mods/"
+    self.pendingStoreIcons = {}
 
     ensureDir(profile .. "modSettings/")
     ensureDir(self.baseDir)
     ensureDir(self.stateDir)
     ensureDir(self.iconsDir)
+    ensureDir(self.storeIconsDir)
+    -- mod icons deferred (needed later for mod list UI, not vehicle overview)
 
     log("active, baseDir=" .. self.baseDir)
     self:writeHello()
     self:writeVehiclesFull()
-    self:writeIconsManifestStartup()
 end
 
 function AgriVisionConnector:nextGeneration()
@@ -168,6 +172,7 @@ end
 
 function AgriVisionConnector:collectVehiclesFullXml()
     local parts = {}
+    self.pendingStoreIcons = {}
     if g_currentMission == nil then
         return "    <!-- mission unavailable -->\n"
     end
@@ -230,6 +235,15 @@ function AgriVisionConnector:collectVehiclesFullXml()
             end
 
             local modKey = self:modKeyFromFilename(filename)
+            local storeKey = self:storeKeyFromFilename(filename)
+            local imageSrc = self:vehicleStoreImage(vehicle, filename)
+            if storeKey ~= nil and imageSrc ~= nil and self.pendingStoreIcons[storeKey] == nil then
+                self.pendingStoreIcons[storeKey] = {
+                    src = imageSrc,
+                    filename = filename,
+                }
+            end
+
             local x, y, z = self:vehicleWorldPos(vehicle)
             local attrs = {}
             if uniqueId ~= nil then
@@ -243,6 +257,9 @@ function AgriVisionConnector:collectVehiclesFullXml()
             end
             if name ~= "" then
                 table.insert(attrs, string.format('name="%s"', self:xmlEscape(name)))
+            end
+            if storeKey ~= nil then
+                table.insert(attrs, string.format('storeKey="%s"', self:xmlEscape(storeKey)))
             end
             if modKey ~= nil then
                 table.insert(attrs, string.format('modKey="%s"', self:xmlEscape(modKey)))
@@ -279,6 +296,7 @@ function AgriVisionConnector:writeVehiclesFull()
         self:collectVehiclesFullXml()
     )
     self:writeTextFile(self.stateDir .. "vehicles_full.xml", body)
+    self:writeStoreIconsManifest()
     self.lastFullVehiclesAt = g_time or 0
 end
 
@@ -301,16 +319,69 @@ function AgriVisionConnector:modKeyFromFilename(filename)
     return key
 end
 
-function AgriVisionConnector:copyModIcon(src, dest)
+--- Stable key for vehicle store image (type-level, shared by duplicates).
+function AgriVisionConnector:storeKeyFromFilename(filename)
+    if filename == nil or filename == "" then
+        return nil
+    end
+    local path = tostring(filename):gsub("\\", "/"):lower()
+    path = path:gsub("%$moddir%$", "mod/")
+    path = path:gsub("%.xml$", "")
+    path = path:gsub("[^a-z0-9]+", "_"):gsub("^_", ""):gsub("_$", "")
+    if path == "" then
+        return nil
+    end
+    if #path > 96 then
+        path = path:sub(-96)
+    end
+    return path
+end
+
+function AgriVisionConnector:vehicleStoreImage(vehicle, filename)
+    if vehicle ~= nil and vehicle.getImageFilename ~= nil then
+        local ok, image = pcall(function()
+            return vehicle:getImageFilename()
+        end)
+        if ok and image ~= nil and tostring(image) ~= "" then
+            return tostring(image)
+        end
+    end
+    if g_storeManager ~= nil and g_storeManager.getItemByXMLFilename ~= nil and filename ~= nil and filename ~= "" then
+        local ok, item = pcall(function()
+            return g_storeManager:getItemByXMLFilename(filename)
+        end)
+        if ok and item ~= nil and item.imageFilename ~= nil and tostring(item.imageFilename) ~= "" then
+            return tostring(item.imageFilename)
+        end
+    end
+    return nil
+end
+
+function AgriVisionConnector:fileLooksPresent(path)
+    if path == nil or path == "" or io == nil or io.open == nil then
+        return false
+    end
+    local f = io.open(path, "rb")
+    if f == nil then
+        return false
+    end
+    f:close()
+    return true
+end
+
+function AgriVisionConnector:copyIconFile(src, dest)
     if src == nil or dest == nil or src == "" then
         return false
     end
-    -- Prefer Engine copyFile when present (works with packed mods).
+    if self:fileLooksPresent(dest) then
+        return true
+    end
+    -- Prefer Engine copyFile when present (works with packed mods / DDS).
     if copyFile ~= nil then
         local ok = pcall(function()
             copyFile(src, dest, true)
         end)
-        if ok then
+        if ok and self:fileLooksPresent(dest) then
             return true
         end
     end
@@ -335,73 +406,49 @@ function AgriVisionConnector:copyModIcon(src, dest)
     return true
 end
 
-function AgriVisionConnector:writeIconsManifestStartup()
-    ensureDir(self.iconsDir)
+function AgriVisionConnector:iconExtFromPath(path)
+    local lower = string.lower(tostring(path or ""))
+    if string.find(lower, "%.dds") then
+        return "dds"
+    end
+    if string.find(lower, "%.jpe?g") then
+        return "jpg"
+    end
+    return "png"
+end
+
+--- Vehicle store icons only (unique types in the current mission). Mod-pack icons are deferred.
+function AgriVisionConnector:writeStoreIconsManifest()
+    ensureDir(self.storeIconsDir)
     local gen = self:nextGeneration()
     local rows = {}
+    local copiedCount = 0
+    local pending = self.pendingStoreIcons or {}
 
-    local modsTable = nil
-    if g_modManager ~= nil then
-        modsTable = g_modManager.nameToMod or g_modManager.mods or g_modManager.modList
-    end
-
-    if modsTable ~= nil then
-        for name, modItem in pairs(modsTable) do
-            if type(modItem) == "table" then
-                local modName = modItem.modName or modItem.name or (type(name) == "string" and name or nil)
-                if modName ~= nil and tostring(modName) ~= "" and not string.find(tostring(modName), "AgriVisionConnector", 1, true) then
-                    local key = tostring(modName):gsub("%.zip$", "")
-                    local iconSrc = modItem.iconFilename or (modItem.modDesc and modItem.modDesc.iconFilename) or nil
-                    local modDir = modItem.modDir or modItem.dir or ""
-                    if (iconSrc == nil or iconSrc == "") and modDir ~= "" then
-                        iconSrc = modDir .. "icon.png"
-                    elseif iconSrc ~= nil and modDir ~= "" and not string.find(iconSrc, ":") and not string.find(iconSrc, "/") and not string.find(iconSrc, "\\") then
-                        iconSrc = modDir .. iconSrc
-                    end
-
-                    -- Copy PNG/JPG/DDS; dashboard converts DDS → PNG when serving.
-                    local ext = "png"
-                    if iconSrc ~= nil then
-                        local lower = string.lower(iconSrc)
-                        if string.find(lower, "%.dds") then
-                            ext = "dds"
-                        elseif string.find(lower, "%.jpe?g") then
-                            ext = "jpg"
-                        elseif string.find(lower, "%.png") then
-                            ext = "png"
-                        end
-                    end
-
-                    local copied = false
-                    local rel = string.format("icons/%s.%s", key, ext)
-                    if iconSrc ~= nil then
-                        copied = self:copyModIcon(iconSrc, self.baseDir .. rel)
-                    end
-                    if copied then
-                        local author = modItem.author or ""
-                        local version = modItem.version or ""
-                        local title = modItem.title or key
-                        table.insert(
-                            rows,
-                            string.format(
-                                '  <mod key="%s" name="%s" author="%s" version="%s" title="%s" iconFile="%s" />\n',
-                                self:xmlEscape(key),
-                                self:xmlEscape(key),
-                                self:xmlEscape(author),
-                                self:xmlEscape(version),
-                                self:xmlEscape(title),
-                                self:xmlEscape(rel)
-                            )
-                        )
-                    end
-                end
-            end
+    for storeKey, meta in pairs(pending) do
+        local src = meta.src
+        local ext = self:iconExtFromPath(src)
+        local rel = string.format("icons/store/%s.%s", storeKey, ext)
+        local dest = self.baseDir .. rel
+        local ok = self:copyIconFile(src, dest)
+        if ok then
+            copiedCount = copiedCount + 1
+            table.insert(
+                rows,
+                string.format(
+                    '  <store key="%s" filename="%s" iconFile="%s" />\n',
+                    self:xmlEscape(storeKey),
+                    self:xmlEscape(meta.filename or ""),
+                    self:xmlEscape(rel)
+                )
+            )
         end
     end
 
+    table.sort(rows)
     local body = string.format(
         [[<?xml version="1.0" encoding="utf-8"?>
-<iconsManifest schema="%s" generation="%s" writtenAtUtc="%s" scan="startup">
+<iconsManifest schema="%s" generation="%s" writtenAtUtc="%s" scan="vehicles" kind="store">
 %s</iconsManifest>
 ]],
         self.SCHEMA,
@@ -410,7 +457,7 @@ function AgriVisionConnector:writeIconsManifestStartup()
         table.concat(rows, "")
     )
     self:writeTextFile(self.stateDir .. "icons_manifest.xml", body)
-    log(string.format("icons manifest entries=%s", tostring(#rows)))
+    log(string.format("store icons unique=%s copiedOrPresent=%s", tostring(#rows), tostring(copiedCount)))
 end
 
 function AgriVisionConnector:processCommands()

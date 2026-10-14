@@ -148,9 +148,11 @@ export interface Vehicle {
   name: string
   category: VehicleCategory
   farmId: number | null
-  /** Resolved icon URL after backend maps modKey → stored icon; null = placeholder. */
+  /** Resolved store-icon URL when locally cached; null = placeholder. */
   iconUrl: string | null
-  /** Stable mod key from connector / feed hash for icon assignment. */
+  /** Vehicle type key for store icons (from connector / filename). */
+  storeKey?: string | null
+  /** Mod pack key — reserved for mod-list UI later, not vehicle overview. */
   modKey?: string | null
   x: number | null
   y: number | null

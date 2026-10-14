@@ -181,31 +181,39 @@ final class WorkspaceFeedService
                 // Positions still useful without farm stubs / matching.
             }
 
-            $connector = ['vehicles' => [], 'icons' => [], 'basePath' => null];
+            $connector = ['vehicles' => [], 'basePath' => null];
+            $connectorService = new ConnectorSnapshotService;
             try {
-                $connector = (new ConnectorSnapshotService)->read($workspace);
+                // Vehicles XML only — no per-icon FTP here.
+                $connector = $connectorService->readVehicles($workspace);
             } catch (Throwable) {
                 // Host connector files are optional enrichment.
             }
+
+            // Throttled store-icon pull (skip existing; at most every 15 min).
+            try {
+                $connectorService->syncStoreIconsIfDue($workspace);
+            } catch (Throwable) {
+                // ignore — placeholders until next due sync
+            }
+
             $metaVehicles = ConnectorSnapshotService::mergeMeta($connector['vehicles'], $saveVehicles);
 
             // Savegame/connector = inventory + farmId; stats = live name/position.
             $enriched = VehicleFarmMatcher::mergeInventory($snapshot->vehicles, $metaVehicles);
 
-            // Icons are served lazily via /connector/icons/{modKey} — never block the
-            // vehicles response on FTP zip downloads (that hung equipment empty).
             $iconCache = new ModIconCacheService;
 
             $vehicles = [];
             foreach ($enriched as $index => $vehicle) {
                 $unique = $vehicle['uniqueId'] ?? null;
-                $modKey = $vehicle['modKey'] ?? ModKey::fromFilename($vehicle['filename'] ?? null);
+                $filename = $vehicle['filename'] ?? null;
+                $storeKey = $vehicle['storeKey'] ?? StoreKey::fromFilename(is_string($filename) ? $filename : null);
+                $modKey = $vehicle['modKey'] ?? ModKey::fromFilename(is_string($filename) ? $filename : null);
+                // Only expose icon URLs that already exist locally — never trigger FTP from <img>.
                 $iconUrl = null;
-                if (is_string($modKey) && $modKey !== '' && $iconCache->localPath($workspace, $modKey) !== null) {
-                    $iconUrl = $iconCache->publicUrl($workspace, $modKey);
-                } elseif (is_string($modKey) && $modKey !== '') {
-                    // Hint URL — endpoint fetches/caches on first image request.
-                    $iconUrl = $iconCache->publicUrl($workspace, $modKey);
+                if (is_string($storeKey) && $storeKey !== '' && $iconCache->localPath($workspace, $storeKey) !== null) {
+                    $iconUrl = $iconCache->publicUrl($workspace, $storeKey);
                 }
                 $vehicles[] = [
                     'id' => $unique
@@ -215,6 +223,7 @@ final class WorkspaceFeedService
                     'name' => $vehicle['name'] ?? 'Fahrzeug',
                     'category' => self::mapVehicleCategory($vehicle['category'] ?? null, $vehicle['type'] ?? null),
                     'farmId' => $vehicle['farmId'] ?? null,
+                    'storeKey' => $storeKey,
                     'modKey' => $modKey,
                     'iconUrl' => $iconUrl,
                     'x' => $vehicle['x'] ?? null,
