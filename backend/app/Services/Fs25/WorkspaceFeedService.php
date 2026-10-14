@@ -187,19 +187,36 @@ final class WorkspaceFeedService
             // Savegame/connector = inventory + farmId; stats = live name/position.
             $enriched = VehicleFarmMatcher::mergeInventory($snapshot->vehicles, $metaVehicles);
 
-            $iconKeys = [];
-            foreach ($connector['icons'] as $icon) {
-                $iconKeys[$icon['key']] = true;
+            $neededKeys = [];
+            foreach ($enriched as $vehicle) {
+                $modKey = $vehicle['modKey'] ?? ModKey::fromFilename($vehicle['filename'] ?? null);
+                if (is_string($modKey) && $modKey !== '') {
+                    $neededKeys[] = $modKey;
+                }
             }
+            foreach ($connector['icons'] as $icon) {
+                if (! empty($icon['key'])) {
+                    $neededKeys[] = (string) $icon['key'];
+                }
+            }
+            // Also warm icons for feed-listed mods that vehicles may reference.
+            foreach ($snapshot->mods as $mod) {
+                $name = ModKey::clean((string) ($mod['name'] ?? ''));
+                if ($name !== null) {
+                    $neededKeys[] = $name;
+                }
+            }
+
+            $iconCache = new ModIconCacheService;
+            $readyIcons = $iconCache->ensure($workspace, $neededKeys);
 
             $vehicles = [];
             foreach ($enriched as $index => $vehicle) {
                 $unique = $vehicle['uniqueId'] ?? null;
-                $modKey = $vehicle['modKey'] ?? null;
+                $modKey = $vehicle['modKey'] ?? ModKey::fromFilename($vehicle['filename'] ?? null);
                 $iconUrl = null;
-                if (is_string($modKey) && $modKey !== '' && isset($iconKeys[$modKey])) {
-                    $iconUrl = '/api/workspaces/'.rawurlencode($workspace->public_id)
-                        .'/connector/icons/'.rawurlencode($modKey);
+                if (is_string($modKey) && $modKey !== '' && isset($readyIcons[$modKey])) {
+                    $iconUrl = $iconCache->publicUrl($workspace, $modKey);
                 }
                 $vehicles[] = [
                     'id' => $unique

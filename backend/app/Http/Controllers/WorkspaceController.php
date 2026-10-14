@@ -6,6 +6,7 @@ use App\Models\Workspace;
 use App\Services\Fs25\ConnectorDeployService;
 use App\Services\Fs25\ConnectorSnapshotService;
 use App\Services\Fs25\HostAccessService;
+use App\Services\Fs25\ModIconCacheService;
 use App\Services\Fs25\RequiredModsService;
 use App\Services\Fs25\WorkspaceFeedService;
 use Illuminate\Http\JsonResponse;
@@ -218,14 +219,18 @@ class WorkspaceController extends Controller
         return response()->json($mods->status($row));
     }
 
-    public function connectorIcon(string $workspace, string $modKey, ConnectorSnapshotService $connector): BinaryFileResponse|Response
-    {
+    public function connectorIcon(
+        string $workspace,
+        string $modKey,
+        ConnectorSnapshotService $connector,
+        ModIconCacheService $icons,
+    ): BinaryFileResponse|Response {
         $row = $this->findWorkspace($workspace);
-        $path = $connector->cachedIconPath($row, $modKey);
+        $path = $icons->localPath($row, $modKey) ?? $connector->cachedIconPath($row, $modKey);
         if ($path === null || ! is_file($path)) {
-            // Attempt a fresh pull when host access is available.
+            $icons->ensure($row, [$modKey]);
             $connector->read($row);
-            $path = $connector->cachedIconPath($row, $modKey);
+            $path = $icons->localPath($row, $modKey) ?? $connector->cachedIconPath($row, $modKey);
         }
         if ($path === null || ! is_file($path)) {
             return response('Icon not found.', 404)->header('Content-Type', 'text/plain; charset=UTF-8');

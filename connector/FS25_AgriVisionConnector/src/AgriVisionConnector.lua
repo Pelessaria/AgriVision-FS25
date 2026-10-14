@@ -12,7 +12,7 @@
 
 AgriVisionConnector = {}
 AgriVisionConnector.MOD_NAME = "FS25_AgriVisionConnector"
-AgriVisionConnector.VERSION = "0.1.1.1"
+AgriVisionConnector.VERSION = "0.1.2.0"
 AgriVisionConnector.SCHEMA = "1"
 AgriVisionConnector.TICK_MS = 5000
 AgriVisionConnector.FULL_VEHICLE_EVERY_MS = 60000
@@ -247,6 +247,7 @@ function AgriVisionConnector:collectVehiclesFullXml()
                 operatingTime = vehicle.operatingTime / 3600000
             end
 
+            local modKey = self:modKeyFromFilename(filename)
             local x, y, z = self:vehicleWorldPos(vehicle)
             local attrs = {}
             if uniqueId ~= nil then
@@ -260,6 +261,9 @@ function AgriVisionConnector:collectVehiclesFullXml()
             end
             if name ~= "" then
                 table.insert(attrs, string.format('name="%s"', self:xmlEscape(name)))
+            end
+            if modKey ~= nil then
+                table.insert(attrs, string.format('modKey="%s"', self:xmlEscape(modKey)))
             end
             if operatingTime ~= nil then
                 table.insert(attrs, string.format('operatingTime="%.2f"', operatingTime))
@@ -296,20 +300,130 @@ function AgriVisionConnector:writeVehiclesFull()
     self.lastFullVehiclesAt = g_time or 0
 end
 
+function AgriVisionConnector:modKeyFromFilename(filename)
+    if filename == nil or filename == "" then
+        return nil
+    end
+    local path = tostring(filename):gsub("\\", "/")
+    local key = string.match(path, "%$moddir%$([^/]+)")
+    if key == nil then
+        key = string.match(path, "/(FS25_[^/]+)/")
+    end
+    if key == nil then
+        key = string.match(path, "^(FS25_[^/]+)/")
+    end
+    if key == nil or key == "" then
+        return nil
+    end
+    key = key:gsub("%.zip$", "")
+    return key
+end
+
+function AgriVisionConnector:copyModIcon(src, dest)
+    if src == nil or dest == nil or src == "" then
+        return false
+    end
+    -- Prefer Engine copyFile when present (works with packed mods).
+    if copyFile ~= nil then
+        local ok = pcall(function()
+            copyFile(src, dest, true)
+        end)
+        if ok then
+            return true
+        end
+    end
+    if io == nil or io.open == nil then
+        return false
+    end
+    local incoming = io.open(src, "rb")
+    if incoming == nil then
+        return false
+    end
+    local data = incoming:read("*a")
+    incoming:close()
+    if data == nil or data == "" then
+        return false
+    end
+    local outgoing = io.open(dest, "wb")
+    if outgoing == nil then
+        return false
+    end
+    outgoing:write(data)
+    outgoing:close()
+    return true
+end
+
 function AgriVisionConnector:writeIconsManifestStartup()
-    -- Icon extraction from mod ZIPs is host/path dependent.
-    -- v0 writes an empty manifest so the backend can GC stale icons safely.
+    ensureDir(self.iconsDir)
     local gen = self:nextGeneration()
+    local rows = {}
+
+    local modsTable = nil
+    if g_modManager ~= nil then
+        modsTable = g_modManager.nameToMod or g_modManager.mods or g_modManager.modList
+    end
+
+    if modsTable ~= nil then
+        for name, modItem in pairs(modsTable) do
+            if type(modItem) == "table" then
+                local modName = modItem.modName or modItem.name or (type(name) == "string" and name or nil)
+                if modName ~= nil and tostring(modName) ~= "" and not string.find(tostring(modName), "AgriVisionConnector", 1, true) then
+                    local key = tostring(modName):gsub("%.zip$", "")
+                    local iconSrc = modItem.iconFilename or (modItem.modDesc and modItem.modDesc.iconFilename) or nil
+                    local modDir = modItem.modDir or modItem.dir or ""
+                    if (iconSrc == nil or iconSrc == "") and modDir ~= "" then
+                        iconSrc = modDir .. "icon.png"
+                    elseif iconSrc ~= nil and modDir ~= "" and not string.find(iconSrc, ":") and not string.find(iconSrc, "/") and not string.find(iconSrc, "\\") then
+                        iconSrc = modDir .. iconSrc
+                    end
+
+                    local ext = "png"
+                    if iconSrc ~= nil and string.find(string.lower(iconSrc), "%.dds") then
+                        -- Browsers cannot render DDS; skip until backend conversion exists.
+                        iconSrc = nil
+                    elseif iconSrc ~= nil and string.find(string.lower(iconSrc), "%.jpe?g") then
+                        ext = "jpg"
+                    end
+
+                    local copied = false
+                    local rel = string.format("icons/%s.%s", key, ext)
+                    if iconSrc ~= nil then
+                        copied = self:copyModIcon(iconSrc, self.baseDir .. rel)
+                    end
+                    if copied then
+                        local author = modItem.author or ""
+                        local version = modItem.version or ""
+                        local title = modItem.title or key
+                        table.insert(
+                            rows,
+                            string.format(
+                                '  <mod key="%s" name="%s" author="%s" version="%s" title="%s" iconFile="%s" />\n',
+                                self:xmlEscape(key),
+                                self:xmlEscape(key),
+                                self:xmlEscape(author),
+                                self:xmlEscape(version),
+                                self:xmlEscape(title),
+                                self:xmlEscape(rel)
+                            )
+                        )
+                    end
+                end
+            end
+        end
+    end
+
     local body = string.format(
         [[<?xml version="1.0" encoding="utf-8"?>
 <iconsManifest schema="%s" generation="%s" writtenAtUtc="%s" scan="startup">
-</iconsManifest>
+%s</iconsManifest>
 ]],
         self.SCHEMA,
         tostring(gen),
-        self:xmlEscape(utcNow())
+        self:xmlEscape(utcNow()),
+        table.concat(rows, "")
     )
     self:writeTextFile(self.stateDir .. "icons_manifest.xml", body)
+    log(string.format("icons manifest entries=%s", tostring(#rows)))
 end
 
 function AgriVisionConnector:processCommands()
@@ -370,6 +484,7 @@ function AgriVisionConnector:update(dt)
         self:processCommands()
         if now - self.lastFullVehiclesAt >= self.FULL_VEHICLE_EVERY_MS then
             self:writeVehiclesFull()
+            self:writeIconsManifestStartup()
         end
     end)
     if not ok then
