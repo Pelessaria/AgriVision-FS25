@@ -134,32 +134,71 @@ php_ok() {
   return 0
 }
 
+remove_broken_ondrej_ppa() {
+  # Ubuntu 26.04 (resolute) and other new suites often have no ondrej Release file.
+  run_root rm -f /etc/apt/sources.list.d/ondrej-ubuntu-php-*.list \
+    /etc/apt/sources.list.d/ondrej-php-*.list 2>/dev/null || true
+  run_root rm -f /etc/apt/sources.list.d/*ondrej*php*.sources 2>/dev/null || true
+  if command -v add-apt-repository >/dev/null 2>&1; then
+    run_root add-apt-repository -y -r ppa:ondrej/php 2>/dev/null || true
+  fi
+}
+
+pick_debian_php_series() {
+  # Prefer distro packages (Ubuntu 24.04+/26.04 often ship 8.4/8.5, not 8.3).
+  local series
+  for series in php8.5 php8.4 php8.3 php; do
+    if apt-cache show "${series}-cli" >/dev/null 2>&1 || apt-cache show "${series}" >/dev/null 2>&1; then
+      if [[ "$series" == "php" ]]; then
+        printf '%s' "php"
+      else
+        printf '%s' "$series"
+      fi
+      return 0
+    fi
+  done
+  return 1
+}
+
 provision_debian() {
   log "Installing packages (apt)"
   export DEBIAN_FRONTEND=noninteractive
+
+  # Clear a previously failed ondrej PPA so apt update works again.
+  remove_broken_ondrej_ppa
   run_root apt-get update -y
 
-  # Prefer PHP 8.3 packages; on older Ubuntu add ondrej/php if missing.
-  if ! apt-cache show php8.3-cli >/dev/null 2>&1; then
-    log "php8.3 not in default repos - adding ondrej/php PPA (Ubuntu) if possible"
+  local series=""
+  series="$(pick_debian_php_series || true)"
+
+  if [[ -z "$series" ]]; then
+    log "No PHP 8.3+ packages in default repos - trying ondrej/php (may fail on new Ubuntu)"
     run_root apt-get install -y ca-certificates curl gnupg lsb-release software-properties-common apt-transport-https
     if [[ "$OS_ID" == "ubuntu" ]] && command -v add-apt-repository >/dev/null 2>&1; then
-      run_root add-apt-repository -y ppa:ondrej/php
-      run_root apt-get update -y
+      if run_root add-apt-repository -y ppa:ondrej/php \
+        && run_root apt-get update -y; then
+        series="$(pick_debian_php_series || true)"
+      else
+        log "ondrej/php unavailable for this Ubuntu suite - removing broken repo"
+        remove_broken_ondrej_ppa
+        run_root apt-get update -y
+      fi
     fi
   fi
 
-  local pkgs=(
-    ca-certificates curl unzip git unzip
-    php8.3-cli php8.3-fpm php8.3-mysql php8.3-xml php8.3-mbstring
-    php8.3-curl php8.3-zip php8.3-bcmath php8.3-intl php8.3-sqlite3
-  )
+  [[ -n "$series" ]] || die "No PHP packages found. On Ubuntu 26.04+ install php-cli/php-fpm from distro repos manually, then re-run with --skip-packages."
 
-  if ! apt-cache show php8.3-cli >/dev/null 2>&1; then
-    pkgs=(
-      ca-certificates curl unzip git
+  log "Using APT PHP series: ${series}"
+  local pkgs=(ca-certificates curl unzip git)
+  if [[ "$series" == "php" ]]; then
+    pkgs+=(
       php-cli php-fpm php-mysql php-xml php-mbstring
       php-curl php-zip php-bcmath php-intl php-sqlite3
+    )
+  else
+    pkgs+=(
+      "${series}-cli" "${series}-fpm" "${series}-mysql" "${series}-xml" "${series}-mbstring"
+      "${series}-curl" "${series}-zip" "${series}-bcmath" "${series}-intl" "${series}-sqlite3"
     )
   fi
 
@@ -172,23 +211,24 @@ provision_debian() {
 
   run_root apt-get install -y "${pkgs[@]}"
 
-  if command -v php8.3 >/dev/null 2>&1; then
-    PHP_BIN="php8.3"
+  if [[ "$series" != "php" ]] && command -v "$series" >/dev/null 2>&1; then
+    PHP_BIN="$series"
   else
-    PHP_BIN="php"
+    resolve_php_bin
   fi
 
-  # Enable common PHP extensions if packaged as mods
   if command -v phpenmod >/dev/null 2>&1; then
     run_root phpenmod mysqli pdo_mysql mbstring xml curl zip 2>/dev/null || true
   fi
 
   if command -v systemctl >/dev/null 2>&1; then
-    if systemctl list-unit-files | grep -q php8.3-fpm; then
-      run_root systemctl enable --now php8.3-fpm
-    elif systemctl list-unit-files | grep -q php-fpm; then
-      run_root systemctl enable --now php-fpm
-    fi
+    local unit
+    for unit in "${series}-fpm" php8.5-fpm php8.4-fpm php8.3-fpm php-fpm; do
+      if systemctl list-unit-files 2>/dev/null | grep -q "^${unit}\\.service"; then
+        run_root systemctl enable --now "$unit"
+        break
+      fi
+    done
   fi
 }
 
@@ -537,7 +577,10 @@ if [[ "$SERVER_NAME" == "_" && "$APP_URL" == http*://* ]]; then
 fi
 
 if [[ "$WITH_DB" -eq 1 || "$MIGRATE" -eq 1 ]]; then
-  [[ -n "$DB_PASSWORD" ]] || die "--db-password is required with --with-db or --migrate"
+  if [[ -z "$DB_PASSWORD" ]]; then
+    DB_PASSWORD="$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)"
+    log "Generated DB password (saved into backend/.env): ${DB_PASSWORD}"
+  fi
 fi
 
 log "AgriVision install -> ${ROOT}"
