@@ -72,7 +72,7 @@ export function VehiclesPage() {
 
     const pullIcons = async () => {
       let passes = 0
-      while (!cancelled && passes < 16) {
+      while (!cancelled && passes < 24) {
         try {
           const sync = await apiWorkspaceSyncIcons(workspace.id)
           if (cancelled) return
@@ -80,25 +80,35 @@ export function VehiclesPage() {
           const downloaded = sync.iconSync?.downloaded ?? 0
           const converted = sync.iconSync?.converted ?? 0
           const errors = sync.iconSync?.errors ?? 0
+          const skipped = sync.iconSync?.skipped ?? null
           if (downloaded > 0 || converted > 0) {
             await refreshVehicles(false)
           }
-          if (sync.iconSync?.skipped === "throttled") {
+          if (skipped === "throttled") {
             pollTimer = setTimeout(() => {
               void pullIcons()
-            }, 6_000)
+            }, 4_000)
+            return
+          }
+          // Manifest/host hiccup — retry; do not give up after one empty pass.
+          if (skipped === "no_icons" || skipped === "manifest_failed" || skipped === "connect_failed") {
+            pollTimer = setTimeout(() => {
+              void pullIcons()
+            }, 12_000)
             return
           }
           if (pending <= 0) return
-          // All attempts in this batch failed — back off instead of spinning.
           if (downloaded === 0 && converted === 0 && errors > 0) {
             pollTimer = setTimeout(() => {
               void pullIcons()
-            }, 15_000)
+            }, 10_000)
             return
           }
           passes += 1
         } catch {
+          pollTimer = setTimeout(() => {
+            void pullIcons()
+          }, 15_000)
           return
         }
       }
@@ -107,9 +117,8 @@ export function VehiclesPage() {
     void (async () => {
       const result = await refreshVehicles(true)
       if (cancelled || !result) return
-      if (result.vehicles.some((vehicle) => !vehicle.iconUrl)) {
-        void pullIcons()
-      }
+      // Always kick icon FTP sync after vehicles — missing iconUrl is the common case.
+      void pullIcons()
     })()
 
     return () => {

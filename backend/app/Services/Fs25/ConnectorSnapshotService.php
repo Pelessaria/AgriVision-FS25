@@ -12,7 +12,8 @@ use Throwable;
  * Pull AgriVision connector files from host modSettings.
  *
  * Vehicles: cheap XML pull for inventory enrichment.
- * Store icons: dedicated incremental FTP sync → local PNG (GD optional).
+ * Store icons: read icons_manifest.xml, then RETR each missing file directly.
+ * Never gate downloads on FTP LIST — many FTPS hosts return empty NLST.
  */
 final class ConnectorSnapshotService
 {
@@ -22,7 +23,7 @@ final class ConnectorSnapshotService
     public const ICON_SYNC_INTERVAL_SEC = 3;
 
     /** Max missing icons to fetch/convert per sync pass. */
-    public const ICON_SYNC_BATCH = 15;
+    public const ICON_SYNC_BATCH = 12;
 
     /**
      * @return array{
@@ -91,7 +92,8 @@ final class ConnectorSnapshotService
                     'downloaded' => 0,
                     'converted' => 0,
                     'skipped' => 'throttled',
-                    'pending' => 0,
+                    // Unknown while throttled — FE must keep polling, not stop.
+                    'pending' => 1,
                     'errors' => 0,
                     'listed' => 0,
                     'detail' => null,
@@ -101,7 +103,9 @@ final class ConnectorSnapshotService
 
         $result = $this->syncStoreIcons($workspace);
 
-        if ($result['skipped'] === null || in_array($result['skipped'], ['connect_failed', 'no_icons', 'empty'], true)) {
+        // Only throttle after a real attempt (success or hard failure).
+        if ($result['skipped'] === null
+            || in_array($result['skipped'], ['connect_failed', 'no_icons', 'manifest_failed'], true)) {
             File::ensureDirectoryExists(dirname($marker));
             File::put($marker, (string) time());
         }
@@ -142,38 +146,75 @@ final class ConnectorSnapshotService
             return $this->syncResult(skipped: 'connect_failed', detail: $e->getMessage());
         }
 
-        $storeDir = $base.'/icons/store';
-        $names = [];
+        // Manifest-first: one XML read (same path that already works), then direct RETR.
+        // Do NOT require FTP LIST — empty NLST would skip all icon downloads forever.
         try {
-            $names = $client->listNames($storeDir);
+            $manifestXml = $client->read($base.'/state/icons_manifest.xml');
         } catch (Throwable $e) {
-            // Fall back to manifest keys if LIST is blocked.
-            Log::info('AgriVision icon LIST failed, trying manifest', [
+            Log::warning('AgriVision icons_manifest read failed', [
                 'workspace' => $workspace->public_id,
                 'error' => $e->getMessage(),
             ]);
-            $names = $this->namesFromManifest($client, $base);
-            if ($names === []) {
-                return $this->syncResult(
-                    skipped: 'no_icons',
-                    detail: 'LIST icons/store fehlgeschlagen: '.$e->getMessage()
-                );
+
+            return $this->syncResult(skipped: 'manifest_failed', detail: $e->getMessage());
+        }
+
+        $entries = ConnectorIconsParser::parse($manifestXml);
+        $jobs = [];
+        foreach ($entries as $icon) {
+            if (($icon['kind'] ?? 'store') !== 'store') {
+                continue;
+            }
+            $key = trim((string) $icon['key']);
+            $iconFile = trim(str_replace('\\', '/', (string) $icon['iconFile']));
+            if ($key === '' || $iconFile === '') {
+                continue;
+            }
+            $remote = str_starts_with($iconFile, $base.'/')
+                ? $iconFile
+                : rtrim($base, '/').'/'.ltrim($iconFile, '/');
+            $ext = strtolower(pathinfo($iconFile, PATHINFO_EXTENSION) ?: 'dds');
+            if (! in_array($ext, ['dds', 'png', 'jpg', 'jpeg', 'webp'], true)) {
+                $ext = 'dds';
+                if (! str_contains(strtolower($iconFile), '.dds')) {
+                    $remote = preg_replace('/\.[^.]+$/', '', $remote).'.dds';
+                }
+            }
+            $jobs[$key] = [
+                'key' => $key,
+                'ext' => $ext,
+                'remote' => $remote,
+            ];
+        }
+
+        // Fallback: derive store keys from vehicles_full when manifest has no store rows.
+        if ($jobs === []) {
+            try {
+                $vehicles = ConnectorVehiclesParser::parse($client->read($base.'/state/vehicles_full.xml'));
+                foreach ($vehicles as $vehicle) {
+                    $key = $vehicle['storeKey'] ?? null;
+                    if (! is_string($key) || $key === '') {
+                        continue;
+                    }
+                    $jobs[$key] = [
+                        'key' => $key,
+                        'ext' => 'dds',
+                        'remote' => rtrim($base, '/').'/icons/store/'.$key.'.dds',
+                    ];
+                }
+            } catch (Throwable) {
+                // keep empty
             }
         }
 
-        $iconNames = [];
-        foreach ($names as $name) {
-            $lower = strtolower($name);
-            if (str_ends_with($lower, '.dds') || str_ends_with($lower, '.png')) {
-                $iconNames[] = $name;
-            }
+        if ($jobs === []) {
+            return $this->syncResult(
+                skipped: 'no_icons',
+                detail: 'icons_manifest.xml ohne store-Einträge'
+            );
         }
 
-        if ($iconNames === []) {
-            return $this->syncResult(skipped: 'no_icons', listed: count($names), detail: 'icons/store ohne .dds/.png');
-        }
-
-        return $this->cacheIconFiles($client, $workspace, $storeDir, $iconNames);
+        return $this->downloadIconJobs($client, $workspace, array_values($jobs));
     }
 
     public function cachedIconPath(Workspace $workspace, string $key): ?string
@@ -183,63 +224,34 @@ final class ConnectorSnapshotService
     }
 
     /**
-     * @return list<string>
-     */
-    private function namesFromManifest(HostFileClient $client, string $base): array
-    {
-        try {
-            $icons = ConnectorIconsParser::parse($client->read($base.'/state/icons_manifest.xml'));
-        } catch (Throwable) {
-            return [];
-        }
-        $names = [];
-        foreach ($icons as $icon) {
-            if (($icon['kind'] ?? 'store') !== 'store') {
-                continue;
-            }
-            $baseName = basename(str_replace('\\', '/', $icon['iconFile']));
-            if ($baseName !== '') {
-                $names[] = $baseName;
-            }
-        }
-
-        return $names;
-    }
-
-    /**
-     * @param  list<string>  $iconNames  basenames in icons/store
+     * @param  list<array{key: string, ext: string, remote: string}>  $jobs
      * @return array{downloaded: int, converted: int, skipped: string|null, pending: int, errors: int, listed: int, detail: string|null}
      */
-    private function cacheIconFiles(HostFileClient $client, Workspace $workspace, string $storeDir, array $iconNames): array
+    private function downloadIconJobs(HostFileClient $client, Workspace $workspace, array $jobs): array
     {
         $cache = new ModIconCacheService;
         $dir = $cache->cacheDir($workspace);
         File::ensureDirectoryExists($dir);
 
         $work = [];
-        foreach ($iconNames as $name) {
-            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION) ?: 'dds');
-            $key = pathinfo($name, PATHINFO_FILENAME);
-            if ($key === '') {
+        foreach ($jobs as $job) {
+            $safeKey = preg_replace('/[^a-zA-Z0-9._-]+/', '_', $job['key']) ?? 'icon';
+            if ($cache->localPath($workspace, $safeKey) !== null) {
                 continue;
             }
-            $safeKey = preg_replace('/[^a-zA-Z0-9._-]+/', '_', $key) ?? 'icon';
-            if ($cache->localPath($workspace, $safeKey) !== null) {
-                continue; // browser-ready PNG/JPEG already present
-            }
+            $local = $dir.'/'.$safeKey.'.'.$job['ext'];
             $work[] = [
                 'key' => $safeKey,
-                'ext' => $ext,
-                'remote' => rtrim($storeDir, '/').'/'.$name,
-                'local' => $dir.'/'.$safeKey.'.'.$ext,
+                'ext' => $job['ext'],
+                'remote' => $job['remote'],
+                'local' => $local,
                 'pngLocal' => $dir.'/'.$safeKey.'.png',
-                'hasLocal' => is_file($dir.'/'.$safeKey.'.'.$ext) && filesize($dir.'/'.$safeKey.'.'.$ext) > 32,
+                'hasLocal' => is_file($local) && filesize($local) > 32,
             ];
         }
 
-        $listed = count($iconNames);
-        $pending = count($work);
-        if ($pending === 0) {
+        $listed = count($jobs);
+        if ($work === []) {
             return $this->syncResult(listed: $listed, detail: 'alle Icons bereits als PNG vorhanden');
         }
 
@@ -247,20 +259,33 @@ final class ConnectorSnapshotService
         $converted = 0;
         $errors = 0;
         $firstError = null;
+        $batch = array_slice($work, 0, self::ICON_SYNC_BATCH);
 
-        foreach (array_slice($work, 0, self::ICON_SYNC_BATCH) as $job) {
+        Log::info('AgriVision icon sync starting RETR batch', [
+            'workspace' => $workspace->public_id,
+            'listed' => $listed,
+            'missing' => count($work),
+            'batch' => count($batch),
+            'firstRemote' => $batch[0]['remote'] ?? null,
+        ]);
+
+        foreach ($batch as $job) {
             try {
                 $bytes = null;
                 if ($job['hasLocal']) {
                     $bytes = (string) file_get_contents($job['local']);
                 } else {
-                    $bytes = $client->read($job['remote']);
-                    if ($bytes === '' || strlen($bytes) <= 32) {
+                    $bytes = $this->readIconBytes($client, $job['remote'], $job['ext']);
+                    if ($bytes === null || $bytes === '' || strlen($bytes) <= 32) {
                         $errors++;
-                        $firstError ??= 'leere Datei '.$job['remote'];
+                        $firstError ??= 'RETR leer/fehlgeschlagen '.$job['remote'];
                         continue;
                     }
-                    File::put($job['local'], $bytes);
+                    $writeExt = str_starts_with($bytes, 'DDS ') ? 'dds' : $job['ext'];
+                    $writePath = $dir.'/'.$job['key'].'.'.$writeExt;
+                    File::put($writePath, $bytes);
+                    $job['local'] = $writePath;
+                    $job['ext'] = $writeExt;
                     $downloaded++;
                 }
 
@@ -276,13 +301,15 @@ final class ConnectorSnapshotService
                 } elseif (in_array($job['ext'], ['png', 'jpg', 'jpeg', 'webp'], true) && is_string($bytes) && $bytes !== '') {
                     if ($job['ext'] === 'png') {
                         File::put($job['pngLocal'], $bytes);
+                    } else {
+                        // Non-PNG rasters: keep as downloaded file; localPath already accepts jpg/webp.
                     }
                     $converted++;
                 }
             } catch (Throwable $e) {
                 $errors++;
                 $firstError ??= $e->getMessage().' @ '.$job['remote'];
-                Log::warning('AgriVision icon fetch failed', [
+                Log::warning('AgriVision icon RETR failed', [
                     'workspace' => $workspace->public_id,
                     'remote' => $job['remote'],
                     'error' => $e->getMessage(),
@@ -291,12 +318,8 @@ final class ConnectorSnapshotService
         }
 
         $stillPending = 0;
-        foreach ($iconNames as $name) {
-            $key = pathinfo($name, PATHINFO_FILENAME);
-            if ($key === '') {
-                continue;
-            }
-            $safeKey = preg_replace('/[^a-zA-Z0-9._-]+/', '_', $key) ?? 'icon';
+        foreach ($jobs as $job) {
+            $safeKey = preg_replace('/[^a-zA-Z0-9._-]+/', '_', $job['key']) ?? 'icon';
             if ($cache->localPath($workspace, $safeKey) === null) {
                 $stillPending++;
             }
@@ -321,6 +344,34 @@ final class ConnectorSnapshotService
             'listed' => $listed,
             'detail' => $firstError,
         ];
+    }
+
+    /**
+     * RETR icon; if .dds missing try .png (and vice versa).
+     */
+    private function readIconBytes(HostFileClient $client, string $remote, string $ext): ?string
+    {
+        $candidates = [$remote];
+        $base = preg_replace('/\.[^.]+$/', '', $remote) ?? $remote;
+        foreach (['dds', 'png', 'jpg', 'jpeg'] as $alt) {
+            if ($alt === $ext) {
+                continue;
+            }
+            $candidates[] = $base.'.'.$alt;
+        }
+
+        foreach ($candidates as $path) {
+            try {
+                $bytes = $client->read($path);
+                if (is_string($bytes) && strlen($bytes) > 32) {
+                    return $bytes;
+                }
+            } catch (Throwable) {
+                // try next extension
+            }
+        }
+
+        return null;
     }
 
     /**
