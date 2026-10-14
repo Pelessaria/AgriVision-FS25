@@ -450,25 +450,9 @@ export function SettingsPage() {
               </button>
             </div>
           </section>
-          <section className="panel settings-card">
-            <div className="settings-card-head">
-              <h2>{t("settings.viewAs")}</h2>
-              <p className="hint">{t("settings.viewAsHint")}</p>
-            </div>
-            <label className="field">
-              <span>{t("settings.viewAs")}</span>
-              <select
-                value={store.viewUserId ?? store.sessionUserId ?? ""}
-                onChange={(event) => store.setViewUser(event.target.value)}
-              >
-                {store.users.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.active ? user.name : `${user.name} (${t("users.inactive")})`}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </section>
+          {!store.liveMode ? (
+            <p className="hint">{t("settings.viewAsMoved")}</p>
+          ) : null}
         </div>
       ) : null}
 

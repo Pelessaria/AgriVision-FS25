@@ -525,7 +525,36 @@ h1, h2, h3, p { margin: 0; }
 .ws-module-link .faint {
   line-height: 1.3;
 }
-.side-foot { margin-top: auto; padding: 0 6px 2px; }
+.side-foot {
+  margin-top: auto;
+  padding: 8px 6px 2px;
+  display: grid;
+  gap: 10px;
+}
+.side-viewas {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.side-viewas .nav-label {
+  color: var(--text-faint);
+  font-size: 0.72rem;
+}
+.side-viewas select {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+.shell.collapsed .side-viewas .nav-label { display: none; }
+.shell.collapsed .side-viewas select {
+  padding: 0 4px;
+  font-size: 0.65rem;
+}
 .side-version {
   display: flex;
   flex-direction: column;
@@ -541,6 +570,76 @@ h1, h2, h3, p { margin: 0; }
   letter-spacing: 0.02em;
 }
 .shell.collapsed .side-version { align-items: center; }
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.field-label-row h2 { margin: 0; }
+.field-tip {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.field-tip-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-faint);
+}
+.field-tip-btn:hover,
+.field-tip-btn[aria-expanded="true"] {
+  color: var(--accent-2);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+.field-tip-btn .icon {
+  width: 15px;
+  height: 15px;
+}
+.field-tip-panel {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 8px);
+  left: 0;
+  width: min(20rem, 72vw);
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  box-shadow: var(--shadow);
+  color: var(--text-muted);
+  font-size: var(--small);
+  line-height: 1.45;
+  display: grid;
+  gap: 8px;
+}
+.field-tip-panel p { margin: 0; }
+.field-tip-example {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 0.74rem;
+  color: var(--text-faint);
+  word-break: break-all;
+}
+.setup-steps {
+  margin: 0 0 4px;
+  padding: 12px 12px 12px 1.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--text-muted);
+  font-size: var(--small);
+  line-height: 1.45;
+  display: grid;
+  gap: 6px;
+}
+.setup-steps li::marker { color: var(--text-faint); }
 .backdrop { display: none; }
 
 .main { min-width: 0; display: flex; flex-direction: column; }

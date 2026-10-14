@@ -1,6 +1,6 @@
-import { useEffect, type ReactNode } from "react"
+import { useEffect, useId, useRef, useState, type ReactNode } from "react"
 import { Link } from "react-router-dom"
-import { X } from "lucide-react"
+import { CircleHelp, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { formatWhen } from "../demo"
 import { useStore } from "../store"
@@ -131,5 +131,49 @@ export function BrandMark({ large = false }: { large?: boolean }) {
       width={size}
       height={size}
     />
+  )
+}
+
+/** Quiet “?” help control for labels — click/tap to open, Esc / outside to close. */
+export function FieldTip({ label, children }: { label: string; children: ReactNode }) {
+  const tipId = useId()
+  const rootRef = useRef<HTMLSpanElement>(null)
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    function onPointer(event: PointerEvent) {
+      if (rootRef.current?.contains(event.target as Node)) return
+      setOpen(false)
+    }
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false)
+    }
+    window.addEventListener("pointerdown", onPointer)
+    window.addEventListener("keydown", onKey)
+    return () => {
+      window.removeEventListener("pointerdown", onPointer)
+      window.removeEventListener("keydown", onKey)
+    }
+  }, [open])
+
+  return (
+    <span className="field-tip" ref={rootRef}>
+      <button
+        type="button"
+        className="field-tip-btn"
+        aria-label={label}
+        aria-expanded={open}
+        aria-controls={tipId}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <CircleHelp className="icon" aria-hidden="true" />
+      </button>
+      {open ? (
+        <span className="field-tip-panel" id={tipId} role="note">
+          {children}
+        </span>
+      ) : null}
+    </span>
   )
 }

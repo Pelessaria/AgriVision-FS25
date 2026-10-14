@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { LoaderCircle } from "lucide-react"
-import { MissingWorkspace, Modal, PermissionBlock } from "../components/ui"
+import { FieldTip, MissingWorkspace, Modal, PermissionBlock } from "../components/ui"
 import { useStore } from "../store"
 import { useWorkspaceRoute } from "../use-workspace"
 import { isFeedUrl, isFeedUrlWithCode } from "../validate"
@@ -124,13 +124,32 @@ export function WorkspaceSettingsPage() {
               </div>
             </form>
             <form className="panel settings-card" onSubmit={(event) => void saveFeed(event)}>
-              <h2>{t("wsettings.feed")}</h2>
+              <div className="field-label-row">
+                <h2>{t("wsettings.feed")}</h2>
+                <FieldTip label={t("wsettings.feedTipLabel")}>
+                  <p>{t("wsettings.feedTip")}</p>
+                </FieldTip>
+              </div>
+              <ol className="setup-steps">
+                <li>{t("wsettings.feedStep1")}</li>
+                <li>{t("wsettings.feedStep2")}</li>
+                <li>{t("wsettings.feedStep3")}</li>
+                <li>{t("wsettings.feedStep4")}</li>
+              </ol>
               <label className="field">
-                <span className="sr">{t("wsettings.feed")}</span>
+                <span className="field-label-row">
+                  <span>{t("wsettings.feedField")}</span>
+                  <FieldTip label={t("wsettings.feedUrlTipLabel")}>
+                    <p>{t("wsettings.feedUrlTip")}</p>
+                    <p className="field-tip-example">{t("wsettings.feedUrlExample")}</p>
+                  </FieldTip>
+                </span>
                 <input
                   value={feed}
                   inputMode="url"
-                  placeholder="https://host:8080/feed/dedicated-server-stats.json?code=…"
+                  autoComplete="off"
+                  spellCheck={false}
+                  placeholder={t("wsettings.feedPlaceholder")}
                   aria-invalid={feedError ? true : undefined}
                   onChange={(event) => setFeed(event.target.value)}
                 />

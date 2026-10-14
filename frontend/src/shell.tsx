@@ -241,6 +241,23 @@ export function Shell() {
           )}
         </nav>
         <footer className="side-foot">
+          {!liveMode ? (
+            <label className="side-viewas">
+              <span className="nav-label">{t("settings.viewAs")}</span>
+              <select
+                value={viewUserId ?? sessionUserId ?? ""}
+                onChange={(event) => setViewUser(event.target.value)}
+                title={t("settings.viewAsHint")}
+                aria-label={t("settings.viewAs")}
+              >
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.active ? user.name : `${user.name} (${t("users.inactive")})`}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <p className="side-version">
             <span className="nav-label">{t("shell.product")}</span>
             <strong>{MANAGEMENT_VERSION}</strong>
@@ -393,20 +410,6 @@ export function Shell() {
                           </button>
                         </div>
                       </div>
-                      <label className="field">
-                        <span>{t("settings.viewAs")}</span>
-                        <select
-                          value={viewUserId ?? sessionUserId ?? ""}
-                          onChange={(event) => setViewUser(event.target.value)}
-                        >
-                          {users.map((user) => (
-                            <option key={user.id} value={user.id}>
-                              {user.active ? user.name : `${user.name} (${t("users.inactive")})`}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <p className="hint">{t("settings.viewAsHint")}</p>
                       <Link to="/settings" onClick={() => setMenu(null)}>
                         <Settings className="icon" />
                         {t("profile.settings")}
