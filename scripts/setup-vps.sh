@@ -670,11 +670,13 @@ log "Writable dirs"
 mkdir -p storage/framework/cache/data storage/framework/sessions storage/framework/views
 mkdir -p storage/logs storage/app/public bootstrap/cache
 chmod -R ug+rwx storage bootstrap/cache || true
-# Ensure web server can write logs/sessions (common cause of HTTP 500)
+# www-data must read .env (root-only 600 causes MissingAppKeyException / HTTP 500)
 web_user="www-data"
 id -u nginx >/dev/null 2>&1 && web_user="nginx"
 if id -u "$web_user" >/dev/null 2>&1; then
   run_root chown -R "$web_user":"$web_user" storage bootstrap/cache || true
+  run_root chown root:"$web_user" .env || true
+  run_root chmod 640 .env || true
 fi
 
 if [[ "$BUILD_FRONTEND" -eq 1 ]]; then
