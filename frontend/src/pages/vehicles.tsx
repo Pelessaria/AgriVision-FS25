@@ -117,8 +117,11 @@ export function VehiclesPage() {
     void (async () => {
       const result = await refreshVehicles(true)
       if (cancelled || !result) return
-      // Always kick icon FTP sync after vehicles — missing iconUrl is the common case.
-      void pullIcons()
+      // Backend already RETRs a batch during /vehicles; keep pulling until pending=0.
+      const pending = result.iconSync?.pending ?? 1
+      if (pending > 0 || result.vehicles.some((vehicle) => !vehicle.iconUrl)) {
+        void pullIcons()
+      }
     })()
 
     return () => {

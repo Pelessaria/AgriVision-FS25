@@ -22,8 +22,8 @@ final class ConnectorSnapshotService
     /** Minimum seconds between icon FTP syncs per workspace. */
     public const ICON_SYNC_INTERVAL_SEC = 3;
 
-    /** Max missing icons to fetch/convert per sync pass. */
-    public const ICON_SYNC_BATCH = 12;
+    /** Max missing icons to fetch/convert per sync pass (kept small for vehicles request). */
+    public const ICON_SYNC_BATCH = 8;
 
     /**
      * @return array{

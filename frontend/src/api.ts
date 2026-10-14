@@ -139,6 +139,16 @@ export async function apiSyncWorkspace(
   })
 }
 
+export type IconSyncResult = {
+  downloaded: number
+  converted?: number
+  skipped: string | null
+  pending: number
+  errors?: number
+  listed?: number
+  detail?: string | null
+}
+
 export async function apiWorkspaceVehicles(
   id: string,
 ): Promise<{
@@ -147,6 +157,7 @@ export async function apiWorkspaceVehicles(
   fetchedAt?: string | null
   vehicles: Vehicle[]
   farms: Farm[]
+  iconSync?: IconSyncResult | null
   workspace?: Workspace
 }> {
   return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/vehicles`)
@@ -156,15 +167,7 @@ export async function apiWorkspaceSyncIcons(
   id: string,
 ): Promise<{
   ok: boolean
-  iconSync: {
-    downloaded: number
-    converted?: number
-    skipped: string | null
-    pending: number
-    errors?: number
-    listed?: number
-    detail?: string | null
-  }
+  iconSync: IconSyncResult
 }> {
   return apiFetch(`/api/workspaces/${encodeURIComponent(id)}/connector/icons/sync`, {
     method: "POST",

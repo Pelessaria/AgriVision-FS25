@@ -6,6 +6,7 @@ use App\Models\GameFarm;
 use App\Support\GameFarms;
 use App\Models\Workspace;
 use App\Models\WorkspaceSavegame;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use RuntimeException;
 use Throwable;
@@ -190,9 +191,6 @@ final class WorkspaceFeedService
                 // Host connector files are optional enrichment.
             }
 
-            // Icon FTP runs on a dedicated endpoint so this request stays short
-            // (vehicles_full + feed only). Otherwise shared hosts abort before DDS pulls.
-
             $metaVehicles = ConnectorSnapshotService::mergeMeta($connector['vehicles'], $saveVehicles);
 
             // Savegame/connector = inventory + farmId; stats = live name/position.
@@ -231,12 +229,45 @@ final class WorkspaceFeedService
                 ];
             }
 
+            // Icon RETR must run here — the separate FE sync endpoint often never fires
+            // (old frontend / gated liveMode). Same HostAccess as vehicles_full.xml.
+            $iconSync = null;
+            try {
+                $iconSync = $connectorService->syncStoreIconsIfDue($workspace);
+                if (($iconSync['downloaded'] ?? 0) > 0 || ($iconSync['converted'] ?? 0) > 0) {
+                    foreach ($vehicles as $i => $row) {
+                        $sk = $row['storeKey'] ?? null;
+                        if (! is_string($sk) || $sk === '') {
+                            continue;
+                        }
+                        if ($iconCache->localPath($workspace, $sk) !== null) {
+                            $vehicles[$i]['iconUrl'] = $iconCache->publicUrl($workspace, $sk);
+                        }
+                    }
+                }
+            } catch (Throwable $e) {
+                Log::warning('AgriVision icon sync during vehicles failed', [
+                    'workspace' => $workspace->public_id,
+                    'error' => $e->getMessage(),
+                ]);
+                $iconSync = [
+                    'downloaded' => 0,
+                    'converted' => 0,
+                    'skipped' => 'exception',
+                    'pending' => 1,
+                    'errors' => 1,
+                    'listed' => 0,
+                    'detail' => $e->getMessage(),
+                ];
+            }
+
             return [
                 'ok' => true,
                 'error' => null,
                 'fetchedAt' => $snapshot->fetchedAtUtc,
                 'vehicles' => $vehicles,
                 'farms' => $this->serializeFarms($workspace),
+                'iconSync' => $iconSync,
             ];
         } catch (Throwable $e) {
             $workspace->link_state = 'offline';
@@ -250,6 +281,7 @@ final class WorkspaceFeedService
                 'fetchedAt' => null,
                 'vehicles' => [],
                 'farms' => $this->serializeFarms($workspace),
+                'iconSync' => null,
             ];
         }
     }
