@@ -95,8 +95,11 @@ final class HostAccessService
             return ['ok' => false, 'error' => 'Dateizugang nicht konfiguriert.', 'access' => null, 'farms' => []];
         }
 
+        $endpoint = strtoupper($access->protocol).' '.$access->host.':'.$access->port;
+
         try {
             $client = new HostFileClient($access);
+            $endpoint = $client->endpointLabel();
             $probe = $client->probePaths(
                 $access->remote_savegame_path,
                 $access->remote_mod_settings_path,
@@ -110,8 +113,13 @@ final class HostAccessService
             }
 
             if (! $access->remote_savegame_path) {
+                $hint = $probe['candidates'] !== []
+                    ? ' Gefundene Ordner: '.implode(', ', array_slice($probe['candidates'], 0, 8))
+                    : '';
                 $access->status = 'error';
-                $access->last_error = 'Savegame-Ordner nicht gefunden. Pfad manuell setzen.';
+                $access->last_error = HostConnectionError::redact(
+                    "Savegame-Ordner nicht gefunden ({$endpoint}). Pfad manuell setzen.{$hint}"
+                );
                 $access->save();
 
                 return [
@@ -125,7 +133,9 @@ final class HostAccessService
             $farmsPath = rtrim($access->remote_savegame_path, '/').'/farms.xml';
             if (! $client->fileExists($farmsPath)) {
                 $access->status = 'error';
-                $access->last_error = 'farms.xml im Savegame-Ordner nicht gefunden.';
+                $access->last_error = HostConnectionError::redact(
+                    "farms.xml fehlt unter {$farmsPath} ({$endpoint})."
+                );
                 $access->last_verified_at = now();
                 $access->save();
 
@@ -154,7 +164,7 @@ final class HostAccessService
             ];
         } catch (Throwable $e) {
             $access->status = 'error';
-            $access->last_error = mb_substr($this->safeError($e), 0, 240);
+            $access->last_error = HostConnectionError::format($e, "Dateizugang {$endpoint}");
             $access->save();
 
             return [
@@ -254,12 +264,4 @@ final class HostAccessService
         return $path === '' ? null : $path;
     }
 
-    private function safeError(Throwable $e): string
-    {
-        $message = $e->getMessage();
-        // Never echo credentials that might appear in vendor exceptions.
-        $message = preg_replace('/password[=:].+/i', 'password=***', $message) ?? $message;
-
-        return $message !== '' ? $message : 'Host connection failed.';
-    }
 }

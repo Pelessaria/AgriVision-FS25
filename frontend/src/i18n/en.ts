@@ -489,6 +489,10 @@ export const en = {
     hostProbeFail: "File access failed.",
     hostCleared: "File access removed.",
     hostStatusOk: "Connected — farms.xml was read.",
+    hostFtpsHint:
+      "FTPS uses AUTH TLS on port 21 (typical). Port 990 = implicit FTPS. Self-signed certificates are accepted.",
+    hostErrorCopy: "Copy error text",
+    hostErrorCopied: "Error text copied — use it in a support ticket.",
   },
   permission: {
     title: "No permission",

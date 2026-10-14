@@ -9,6 +9,29 @@ export class ApiError extends Error {
   }
 }
 
+function readApiErrorMessage(data: Record<string, unknown>, status: number): string {
+  if (typeof data.error === "string" && data.error.trim() !== "") return data.error
+  if (typeof data.message === "string" && data.message.trim() !== "") {
+    // Laravel validation: message + errors bag
+    const errors = data.errors
+    if (errors && typeof errors === "object") {
+      const first = Object.values(errors as Record<string, unknown>)
+        .flatMap((value) => (Array.isArray(value) ? value : [value]))
+        .find((value): value is string => typeof value === "string" && value.trim() !== "")
+      if (first) return first
+    }
+    return data.message
+  }
+  const errors = data.errors
+  if (errors && typeof errors === "object") {
+    const first = Object.values(errors as Record<string, unknown>)
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .find((value): value is string => typeof value === "string" && value.trim() !== "")
+    if (first) return first
+  }
+  return `HTTP ${status}`
+}
+
 function readCookie(name: string): string | null {
   const match = document.cookie.match(new RegExp(`(?:^|; )${name.replace(/[.$?*|{}()[\]\\/+^]/g, "\\$&")}=([^;]*)`))
   return match ? decodeURIComponent(match[1]) : null
@@ -48,12 +71,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
 
   const data = (await response.json().catch(() => ({}))) as Record<string, unknown>
   if (!response.ok) {
-    const message =
-      typeof data.message === "string"
-        ? data.message
-        : typeof data.error === "string"
-          ? data.error
-          : `HTTP ${response.status}`
+    const message = readApiErrorMessage(data, response.status)
     throw new ApiError(response.status, message)
   }
 

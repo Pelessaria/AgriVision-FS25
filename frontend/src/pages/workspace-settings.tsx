@@ -371,6 +371,7 @@ export function WorkspaceSettingsPage() {
                 />
               </label>
 
+              {protocol === "ftps" ? <p className="hint">{t("wsettings.hostFtpsHint")}</p> : null}
               {protocol === "ftp" ? (
                 <label className="check-row">
                   <input
@@ -382,12 +383,28 @@ export function WorkspaceSettingsPage() {
                 </label>
               ) : null}
 
-              {hostError ? <p className="field-error">{hostError}</p> : null}
+              {hostError || (workspace.hostAccess?.status === "error" && workspace.hostAccess.lastError) ? (
+                <div className="host-error-box" role="alert">
+                  <p className="field-error">
+                    {hostError || workspace.hostAccess?.lastError}
+                  </p>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-small"
+                    onClick={() => {
+                      const text = hostError || workspace.hostAccess?.lastError || ""
+                      void navigator.clipboard.writeText(text).then(
+                        () => store.pushToast("ok", t("wsettings.hostErrorCopied")),
+                        () => store.pushToast("warn", t("create.copyFailed")),
+                      )
+                    }}
+                  >
+                    {t("wsettings.hostErrorCopy")}
+                  </button>
+                </div>
+              ) : null}
               {workspace.hostAccess?.status === "ok" ? (
                 <p className="hint">{t("wsettings.hostStatusOk")}</p>
-              ) : null}
-              {workspace.hostAccess?.status === "error" && workspace.hostAccess.lastError ? (
-                <p className="field-error">{workspace.hostAccess.lastError}</p>
               ) : null}
               {workspace.hostAccess?.remoteSavegamePath ? (
                 <p className="instance-version">
