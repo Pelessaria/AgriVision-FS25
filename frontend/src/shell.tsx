@@ -22,7 +22,7 @@ import {
   Wallet,
   X,
 } from "lucide-react"
-import { apiWorkspaceFarms, apiWorkspaceSyncIcons, apiWorkspaceVehicles } from "./api"
+import { apiWorkspaceFarms } from "./api"
 import { FarmSwitcher } from "./components/farm-switcher"
 import { BrandMark, Toasts, useTimeLabel } from "./components/ui"
 import { seedNotifications, type AppNotification } from "./demo-notifications"
@@ -78,7 +78,6 @@ export function Shell() {
     workspaces,
     liveMode,
     replaceWorkspaceFarms,
-    replaceWorkspaceVehicles,
     upsertWorkspace,
   } = useStore()
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("fs25.sidebar") === "collapsed")
@@ -122,51 +121,6 @@ export function Shell() {
       cancelled = true
     }
   }, [liveMode, workspace?.id, workspace?.feedConfigured])
-
-  // Store icons sync in the background on any workspace page — not only Equipment.
-  useEffect(() => {
-    if (!liveMode || !workspace?.id) return
-    let cancelled = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-
-    const tick = async () => {
-      if (cancelled) return
-      try {
-        const sync = await apiWorkspaceSyncIcons(workspace.id)
-        if (cancelled) return
-        const pending = sync.iconSync?.pending ?? 0
-        const skipped = sync.iconSync?.skipped ?? null
-        const got = (sync.iconSync?.downloaded ?? 0) + (sync.iconSync?.converted ?? 0)
-        if (got > 0) {
-          const vehicles = await apiWorkspaceVehicles(workspace.id)
-          if (!cancelled) {
-            replaceWorkspaceVehicles(workspace.id, vehicles.vehicles)
-            if (vehicles.farms) replaceWorkspaceFarms(workspace.id, vehicles.farms)
-            if (vehicles.workspace) upsertWorkspace(vehicles.workspace)
-          }
-        }
-        if (cancelled) return
-        const wait = skipped === "throttled" ? 4000 : pending > 0 ? 2000 : 45000
-        timer = setTimeout(() => {
-          void tick()
-        }, wait)
-      } catch {
-        if (cancelled) return
-        timer = setTimeout(() => {
-          void tick()
-        }, 20000)
-      }
-    }
-
-    timer = setTimeout(() => {
-      void tick()
-    }, 400)
-
-    return () => {
-      cancelled = true
-      if (timer) clearTimeout(timer)
-    }
-  }, [liveMode, workspace?.id])
 
   useEffect(() => {
     localStorage.setItem("fs25.sidebar", collapsed ? "collapsed" : "open")
