@@ -16,11 +16,11 @@ Artisan::command('agrivision:sync-store-icons {--daemon : Keep pulling icons unt
         $this->info('icon daemon '.getmypid());
     }
 
-    $run = function (int $interval) use ($icons): array {
+    $run = function (int $interval, int $budgetSec = 120) use ($icons): array {
         $pending = 0;
         $moved = 0;
         foreach (Workspace::query()->cursor() as $workspace) {
-            $result = $icons->syncStoreIconsIfDue($workspace, $interval);
+            $result = $icons->syncStoreIconsIfDue($workspace, $interval, $budgetSec);
             $pending += (int) $result['pending'];
             $moved += (int) $result['downloaded'] + (int) $result['converted'];
             $this->line(sprintf(
@@ -42,18 +42,25 @@ Artisan::command('agrivision:sync-store-icons {--daemon : Keep pulling icons unt
     };
 
     if (! $this->option('daemon')) {
-        $run(ConnectorSnapshotService::ICON_SYNC_INTERVAL_SEC);
+        $deadline = time() + 480;
+        do {
+            $pass = $run(0, 120);
+        } while ($pass['pending'] > 0 && $pass['moved'] > 0 && time() < $deadline);
 
         return;
     }
 
     while (true) {
+        $deadline = time() + 480;
+        $pass = ['pending' => 0, 'moved' => 0];
         try {
-            $run(ConnectorSnapshotService::ICON_SYNC_INTERVAL_SEC);
+            do {
+                $pass = $run(0, 120);
+            } while ($pass['pending'] > 0 && $pass['moved'] > 0 && time() < $deadline);
         } catch (Throwable $e) {
             $this->error($e->getMessage());
         }
-        sleep(ConnectorSnapshotService::ICON_SYNC_INTERVAL_SEC);
+        sleep($pass['pending'] > 0 ? ConnectorSnapshotService::ICON_BACKLOG_INTERVAL_SEC : ConnectorSnapshotService::ICON_SYNC_INTERVAL_SEC);
     }
 })->purpose('Pull missing vehicle store icons over FTP');
 

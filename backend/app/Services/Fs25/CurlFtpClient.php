@@ -204,11 +204,15 @@ final class CurlFtpClient
         return ($name !== '' && $name !== '.' && $name !== '..') ? $name : null;
     }
 
-    public function read(string $path): string
+    public function read(string $path, ?int $timeoutSec = null): string
     {
         $url = $this->urlForPath($path, false);
+        $extra = [];
+        if ($timeoutSec !== null && $timeoutSec > 0) {
+            $extra[CURLOPT_TIMEOUT] = $timeoutSec;
+        }
 
-        return $this->exec($url, [], 'READ '.$path);
+        return $this->exec($url, $extra, 'READ '.$path);
     }
 
     public function write(string $path, string $contents): void

@@ -57,15 +57,64 @@ final class DdsToPng
             return null;
         }
 
-        // Shared hosts often lack php-gd — encode PNG via zlib instead.
-        if (function_exists('imagecreatetruecolor')) {
-            $viaGd = self::encodePngWithGd($rgba, $width, $height);
-            if ($viaGd !== null) {
-                return $viaGd;
-            }
+        // Always zlib. php-gd's per-pixel write on a 512² store icon takes long
+        // enough to kill the PHP worker, so the rest of the queue never runs.
+        return self::encodePngRgba($rgba, $width, $height);
+    }
+
+    /** Header plus enough bytes for one full image. Short files are truncated downloads. */
+    public static function hasPayload(string $ddsBytes): bool
+    {
+        if (strlen($ddsBytes) < 128 || substr($ddsBytes, 0, 4) !== 'DDS ') {
+            return false;
+        }
+        $height = unpack('V', substr($ddsBytes, 12, 4))[1] ?? 0;
+        $width = unpack('V', substr($ddsBytes, 16, 4))[1] ?? 0;
+        if ($width < 1 || $height < 1 || $width > 2048 || $height > 2048) {
+            return false;
         }
 
-        return self::encodePngRgba($rgba, $width, $height);
+        $pfFlags = unpack('V', substr($ddsBytes, 80, 4))[1] ?? 0;
+        $fourCc = substr($ddsBytes, 84, 4);
+        $rgbBitCount = unpack('V', substr($ddsBytes, 88, 4))[1] ?? 0;
+        $offset = $fourCc === 'DX10' ? 148 : 128;
+        if (strlen($ddsBytes) < $offset) {
+            return false;
+        }
+
+        if ($fourCc === 'DX10') {
+            $dxgi = unpack('V', substr($ddsBytes, 128, 4))[1] ?? 0;
+            if (in_array($dxgi, [87, 91], true)) {
+                return strlen($ddsBytes) >= $offset + ($width * $height * 4);
+            }
+            $block = in_array($dxgi, [71, 72], true) ? 8 : 16;
+        } elseif (($pfFlags & 0x4) !== 0 && in_array($fourCc, ['DXT1', 'BC1 '], true)) {
+            $block = 8;
+        } elseif (($pfFlags & 0x4) === 0 && $rgbBitCount === 32) {
+            return strlen($ddsBytes) >= $offset + ($width * $height * 4);
+        } else {
+            $block = 16;
+        }
+
+        $blocks = (int) ceil($width / 4) * (int) ceil($height / 4);
+
+        return strlen($ddsBytes) >= $offset + ($blocks * $block);
+    }
+
+    public static function describe(string $ddsBytes): string
+    {
+        if (strlen($ddsBytes) < 128 || substr($ddsBytes, 0, 4) !== 'DDS ') {
+            return 'kein DDS, '.strlen($ddsBytes).' B';
+        }
+        $height = unpack('V', substr($ddsBytes, 12, 4))[1] ?? 0;
+        $width = unpack('V', substr($ddsBytes, 16, 4))[1] ?? 0;
+        $fourCc = trim(substr($ddsBytes, 84, 4));
+        $extra = '';
+        if ($fourCc === 'DX10' && strlen($ddsBytes) >= 132) {
+            $extra = ' dxgi='.(unpack('V', substr($ddsBytes, 128, 4))[1] ?? 0);
+        }
+
+        return $fourCc.' '.$width.'x'.$height.$extra.' '.strlen($ddsBytes).' B';
     }
 
     private static function encodePngWithGd(string $rgba, int $width, int $height): ?string

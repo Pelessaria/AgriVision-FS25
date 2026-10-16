@@ -46,4 +46,26 @@ final class DdsToPngTest extends TestCase
         $this->assertNotNull($png);
         $this->assertSame("\x89PNG\r\n\x1a\n", substr((string) $png, 0, 8));
     }
+
+    public function test_rejects_truncated_dx10_payload(): void
+    {
+        $header = str_repeat("\0", 148);
+        $header = substr_replace($header, 'DDS ', 0, 4);
+        $header = substr_replace($header, pack('V', 512), 12, 4);
+        $header = substr_replace($header, pack('V', 512), 16, 4);
+        $header = substr_replace($header, 'DX10', 84, 4);
+        $header = substr_replace($header, pack('V', 77), 128, 4);
+        $short = $header.str_repeat("\0", 64);
+
+        $this->assertFalse(DdsToPng::hasPayload($short));
+        $this->assertNull(DdsToPng::convert($short));
+
+        $small = str_repeat("\0", 148);
+        $small = substr_replace($small, 'DDS ', 0, 4);
+        $small = substr_replace($small, pack('V', 4), 12, 4);
+        $small = substr_replace($small, pack('V', 4), 16, 4);
+        $small = substr_replace($small, 'DX10', 84, 4);
+        $small = substr_replace($small, pack('V', 77), 128, 4);
+        $this->assertTrue(DdsToPng::hasPayload($small.str_repeat("\0", 16)));
+    }
 }

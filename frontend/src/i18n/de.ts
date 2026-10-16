@@ -416,6 +416,7 @@ export const de = {
     syncDone: "{{count}} Icons geladen",
     syncBusy: "Sync läuft bereits",
     syncFailed: "Sync fehlgeschlagen",
+    syncRemaining: "Noch {{count}} offen, wird nachgezogen",
     search: "Equipment suchen",
     category: "Kategorie",
     all: "Alle",

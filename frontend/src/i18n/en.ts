@@ -418,6 +418,7 @@ export const en = {
     syncDone: "{{count}} icons loaded",
     syncBusy: "Sync already running",
     syncFailed: "Sync failed",
+    syncRemaining: "{{count}} still missing, catching up",
     search: "Search equipment",
     category: "Category",
     all: "All",

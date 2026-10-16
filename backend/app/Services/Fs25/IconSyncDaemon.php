@@ -40,7 +40,11 @@ final class IconSyncDaemon
     private static function drainAfterResponse(): void
     {
         $checked = storage_path('app/connector/icon-sync.checked');
-        if (is_file($checked) && (time() - (int) filemtime($checked)) < ConnectorSnapshotService::ICON_SYNC_INTERVAL_SEC) {
+        $backlog = is_file(storage_path('app/connector/icon-sync.backlog'));
+        $gap = $backlog
+            ? ConnectorSnapshotService::ICON_BACKLOG_INTERVAL_SEC
+            : ConnectorSnapshotService::ICON_SYNC_INTERVAL_SEC;
+        if (is_file($checked) && (time() - (int) filemtime($checked)) < $gap) {
             return;
         }
 

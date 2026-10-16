@@ -85,14 +85,19 @@ export function VehiclesPage() {
       const result = await apiWorkspaceSyncIcons(workspace.id)
       const sync = result.iconSync
       const moved = (sync?.downloaded ?? 0) + (sync?.converted ?? 0)
+      const pending = sync?.pending ?? 0
       if (moved > 0) {
         const fresh = await apiWorkspaceVehicles(workspace.id)
         replaceWorkspaceVehicles(workspace.id, fresh.vehicles)
         if (fresh.farms) replaceWorkspaceFarms(workspace.id, fresh.farms)
         if (fresh.workspace) upsertWorkspace(fresh.workspace)
-        setSyncNote(t("vehicles.syncDone", { count: moved }))
-      } else if (sync?.skipped === "busy") {
+      }
+      if (sync?.skipped === "busy") {
         setSyncNote(t("vehicles.syncBusy"))
+      } else if (pending > 0) {
+        setSyncNote(t("vehicles.syncRemaining", { count: pending }))
+      } else if (moved > 0) {
+        setSyncNote(t("vehicles.syncDone", { count: moved }))
       } else if (sync?.skipped === "unchanged" || sync?.skipped === null || sync?.skipped === "convert_cooldown") {
         setSyncNote(t("vehicles.syncUnchanged"))
       } else {

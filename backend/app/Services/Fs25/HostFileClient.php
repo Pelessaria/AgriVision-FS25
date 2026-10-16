@@ -155,11 +155,11 @@ final class HostFileClient
         }
     }
 
-    public function read(string $path): string
+    public function read(string $path, ?int $timeoutSec = null): string
     {
         try {
             if ($this->ftp) {
-                return $this->ftp->read($path);
+                return $this->ftp->read($path, $timeoutSec);
             }
 
             return $this->sftp()->read($this->normalizePath($path));

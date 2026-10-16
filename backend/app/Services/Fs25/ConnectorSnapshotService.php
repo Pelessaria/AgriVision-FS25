@@ -20,11 +20,17 @@ final class ConnectorSnapshotService
 {
     public const MOD_FOLDER = 'FS25_AgriVisionConnector';
 
-    /** Seconds between automatic icon checks. A manual sync passes 0. */
+    /** Seconds between automatic checks once every icon is already a PNG. */
     public const ICON_SYNC_INTERVAL_SEC = 300;
 
-    /** Seconds to wait before retrying a DDS that did not become a PNG. */
-    private const CONVERT_COOLDOWN_SEC = 300;
+    /** Seconds before the next pull while icons are still missing. */
+    public const ICON_BACKLOG_INTERVAL_SEC = 15;
+
+    /** Seconds to wait before retrying one DDS that did not become a PNG. */
+    private const CONVERT_COOLDOWN_SEC = 120;
+
+    /** Per-file FTP cap so one dead transfer cannot block the rest of the queue. */
+    private const ICON_READ_TIMEOUT_SEC = 12;
 
     /** @var resource|null */
     private static $iconLock = null;
@@ -85,13 +91,16 @@ final class ConnectorSnapshotService
     /**
      * @return array{downloaded: int, converted: int, skipped: string|null, pending: int, errors: int, listed: int, detail: string|null}
      */
-    public function syncStoreIconsIfDue(Workspace $workspace, ?int $intervalSec = null): array
+    public function syncStoreIconsIfDue(Workspace $workspace, ?int $intervalSec = null, int $budgetSec = 40): array
     {
         $intervalSec ??= self::ICON_SYNC_INTERVAL_SEC;
         $marker = $this->iconSyncMarkerPath($workspace);
-        if (is_file($marker)) {
+        $gap = $intervalSec === 0
+            ? 0
+            : (is_file($this->iconBacklogFlag($workspace)) ? self::ICON_BACKLOG_INTERVAL_SEC : $intervalSec);
+        if ($gap > 0 && is_file($marker)) {
             $age = time() - (int) filemtime($marker);
-            if ($age >= 0 && $age < $intervalSec) {
+            if ($age >= 0 && $age < $gap) {
                 return [
                     'downloaded' => 0,
                     'converted' => 0,
@@ -104,9 +113,9 @@ final class ConnectorSnapshotService
             }
         }
 
-        $result = $this->syncStoreIcons($workspace);
+        $result = $this->syncStoreIcons($workspace, $budgetSec);
 
-        // Throttle after a real check, including "manifest unchanged" (one XML, no DDS).
+        // A finished check waits five minutes. A backlog waits only a few seconds.
         if ($result['skipped'] === null
             || in_array($result['skipped'], ['unchanged', 'connect_failed', 'no_icons', 'manifest_failed', 'convert_cooldown'], true)) {
             File::ensureDirectoryExists(dirname($marker));
@@ -114,6 +123,7 @@ final class ConnectorSnapshotService
             $checked = storage_path('app/connector/icon-sync.checked');
             File::ensureDirectoryExists(dirname($checked));
             File::put($checked, (string) time());
+            $this->noteIconBacklog($workspace, $result);
         }
 
         return $result;
@@ -122,10 +132,10 @@ final class ConnectorSnapshotService
     /**
      * @return array{downloaded: int, converted: int, skipped: string|null, pending: int, errors: int, listed: int, detail: string|null}
      */
-    public function syncStoreIcons(Workspace $workspace): array
+    public function syncStoreIcons(Workspace $workspace, int $budgetSec = 40): array
     {
         if (function_exists('set_time_limit')) {
-            @set_time_limit(600);
+            @set_time_limit(max(60, $budgetSec + 30));
         }
         if (function_exists('ignore_user_abort')) {
             @ignore_user_abort(true);
@@ -136,7 +146,7 @@ final class ConnectorSnapshotService
         }
 
         try {
-            return $this->syncStoreIconsLocked($workspace);
+            return $this->syncStoreIconsLocked($workspace, $budgetSec);
         } finally {
             $this->releaseIconLock();
         }
@@ -145,7 +155,7 @@ final class ConnectorSnapshotService
     /**
      * @return array{downloaded: int, converted: int, skipped: string|null, pending: int, errors: int, listed: int, detail: string|null}
      */
-    private function syncStoreIconsLocked(Workspace $workspace): array
+    private function syncStoreIconsLocked(Workspace $workspace, int $budgetSec): array
     {
         $access = $this->hostAccess($workspace);
         if ($access === null) {
@@ -209,25 +219,9 @@ final class ConnectorSnapshotService
             ];
         }
 
-        // Fallback: derive store keys from vehicles_full when manifest has no store rows.
-        if ($jobs === []) {
-            try {
-                $vehicles = ConnectorVehiclesParser::parse($client->read($base.'/state/vehicles_full.xml'));
-                foreach ($vehicles as $vehicle) {
-                    $key = $vehicle['storeKey'] ?? null;
-                    if (! is_string($key) || $key === '') {
-                        continue;
-                    }
-                    $jobs[$key] = [
-                        'key' => $key,
-                        'ext' => 'dds',
-                        'remote' => rtrim($base, '/').'/icons/store/'.$key.'.dds',
-                    ];
-                }
-            } catch (Throwable) {
-                // keep empty
-            }
-        }
+        // Vehicles whose copy failed are absent from the manifest. Still ask for
+        // icons/store/<storeKey>.dds so a later successful copy is picked up.
+        $jobs = $this->mergeVehicleStoreJobs($client, $base, $jobs);
 
         if ($jobs === []) {
             return $this->syncResult(
@@ -236,7 +230,34 @@ final class ConnectorSnapshotService
             );
         }
 
-        return $this->downloadIconJobs($client, $workspace, array_values($jobs));
+        return $this->downloadIconJobs($client, $workspace, array_values($jobs), $budgetSec);
+    }
+
+    /**
+     * @param  array<string, array{key: string, ext: string, remote: string}>  $jobs
+     * @return array<string, array{key: string, ext: string, remote: string}>
+     */
+    private function mergeVehicleStoreJobs(HostFileClient $client, string $base, array $jobs): array
+    {
+        try {
+            $vehicles = ConnectorVehiclesParser::parse($client->read($base.'/state/vehicles_full.xml'));
+        } catch (Throwable) {
+            return $jobs;
+        }
+
+        foreach ($vehicles as $vehicle) {
+            $key = $vehicle['storeKey'] ?? null;
+            if (! is_string($key) || $key === '' || isset($jobs[$key])) {
+                continue;
+            }
+            $jobs[$key] = [
+                'key' => $key,
+                'ext' => 'dds',
+                'remote' => rtrim($base, '/').'/icons/store/'.$key.'.dds',
+            ];
+        }
+
+        return $jobs;
     }
 
     public function cachedIconPath(Workspace $workspace, string $key): ?string
@@ -249,7 +270,7 @@ final class ConnectorSnapshotService
      * @param  list<array{key: string, ext: string, remote: string}>  $jobs
      * @return array{downloaded: int, converted: int, skipped: string|null, pending: int, errors: int, listed: int, detail: string|null}
      */
-    private function downloadIconJobs(HostFileClient $client, Workspace $workspace, array $jobs): array
+    private function downloadIconJobs(HostFileClient $client, Workspace $workspace, array $jobs, int $budgetSec): array
     {
         $cache = new ModIconCacheService;
         $dir = $cache->cacheDir($workspace);
@@ -299,6 +320,8 @@ final class ConnectorSnapshotService
             );
         }
 
+        $work = $this->rotateAfterCursor($dir, $work);
+        $deadline = time() + max(5, $budgetSec);
         $downloaded = 0;
         $converted = 0;
         $errors = 0;
@@ -312,23 +335,34 @@ final class ConnectorSnapshotService
         ]);
 
         foreach ($work as $job) {
+            if (time() >= $deadline) {
+                break;
+            }
+            File::put($dir.'/.icon-cursor', $job['key']);
+            if (function_exists('set_time_limit')) {
+                @set_time_limit(self::ICON_READ_TIMEOUT_SEC + 20);
+            }
             try {
                 $ddsLocal = $dir.'/'.$job['key'].'.dds';
                 $bytes = null;
                 $fetched = false;
-                if (! $job['force'] && $job['ext'] === 'dds' && is_file($ddsLocal) && filesize($ddsLocal) > 128) {
+                if (! $job['force'] && $job['ext'] === 'dds' && is_file($ddsLocal)) {
                     $cached = file_get_contents($ddsLocal);
-                    if (is_string($cached) && strlen($cached) > 128) {
+                    if (is_string($cached) && DdsToPng::hasPayload($cached)) {
                         $bytes = $cached;
+                    } else {
+                        File::delete($ddsLocal);
                     }
                 }
                 if ($bytes === null) {
-                    $bytes = $client->read($job['remote']);
+                    $bytes = $client->read($job['remote'], self::ICON_READ_TIMEOUT_SEC);
                     $fetched = true;
                 }
                 if ($bytes === '' || strlen($bytes) <= 32) {
                     $errors++;
                     $firstError ??= 'RETR leer '.$job['remote'];
+                    $cooldown[$job['key']] = time() + self::CONVERT_COOLDOWN_SEC;
+                    $this->writeConvertCooldown($dir, $cooldown);
                     continue;
                 }
                 if ($fetched) {
@@ -346,8 +380,12 @@ final class ConnectorSnapshotService
                         $converted++;
                     } else {
                         $errors++;
+                        if (! DdsToPng::hasPayload($bytes) && is_file($ddsLocal)) {
+                            File::delete($ddsLocal);
+                        }
                         $cooldown[$job['key']] = time() + self::CONVERT_COOLDOWN_SEC;
-                        $firstError ??= 'DDS→PNG fehlgeschlagen für '.$job['key'];
+                        $this->writeConvertCooldown($dir, $cooldown);
+                        $firstError ??= 'DDS→PNG fehlgeschlagen für '.$job['key'].' ('.DdsToPng::describe($bytes).')';
                     }
                 } else {
                     $writeExt = in_array($job['ext'], ['png', 'jpg', 'jpeg', 'webp'], true) ? $job['ext'] : 'png';
@@ -359,6 +397,8 @@ final class ConnectorSnapshotService
                 }
             } catch (Throwable $e) {
                 $errors++;
+                $cooldown[$job['key']] = time() + self::CONVERT_COOLDOWN_SEC;
+                $this->writeConvertCooldown($dir, $cooldown);
                 $firstError ??= $e->getMessage().' @ '.$job['remote'];
                 Log::warning('AgriVision icon RETR failed', [
                     'workspace' => $workspace->public_id,
@@ -368,16 +408,21 @@ final class ConnectorSnapshotService
             }
         }
 
-        $stillPending = 0;
+        $missing = 0;
+        $actionable = 0;
         foreach ($jobs as $job) {
             $safeKey = preg_replace('/[^a-zA-Z0-9._-]+/', '_', $job['key']) ?? 'icon';
-            if ($cache->localPath($workspace, $safeKey) === null) {
-                $stillPending++;
+            if ($cache->localPath($workspace, $safeKey) !== null) {
+                continue;
+            }
+            $missing++;
+            if (($cooldown[$safeKey] ?? 0) <= time()) {
+                $actionable++;
             }
         }
 
         $this->writeConvertCooldown($dir, $cooldown);
-        if ($stillPending === 0) {
+        if ($missing === 0) {
             $this->writeIconCatalog($dir, $jobs);
         }
 
@@ -387,7 +432,8 @@ final class ConnectorSnapshotService
             'downloaded' => $downloaded,
             'converted' => $converted,
             'errors' => $errors,
-            'pending' => $stillPending,
+            'pending' => $missing,
+            'actionable' => $actionable,
             'firstError' => $firstError,
         ]);
 
@@ -395,10 +441,11 @@ final class ConnectorSnapshotService
             'downloaded' => $downloaded,
             'converted' => $converted,
             'skipped' => null,
-            'pending' => $stillPending,
+            'pending' => $missing,
             'errors' => $errors,
             'listed' => $listed,
             'detail' => $firstError,
+            'actionable' => $actionable,
         ];
     }
 
@@ -588,6 +635,69 @@ final class ConnectorSnapshotService
     private function iconSyncMarkerPath(Workspace $workspace): string
     {
         return storage_path('app/connector/'.$workspace->public_id.'/icons/.last_sync');
+    }
+
+    private function iconBacklogFlag(Workspace $workspace): string
+    {
+        return storage_path('app/connector/'.$workspace->public_id.'/icons/.backlog');
+    }
+
+    /**
+     * @param  array{skipped: string|null, pending: int, actionable?: int}  $result
+     */
+    private function noteIconBacklog(Workspace $workspace, array $result): void
+    {
+        $flag = $this->iconBacklogFlag($workspace);
+        $global = storage_path('app/connector/icon-sync.backlog');
+        $actionable = $result['skipped'] === null
+            ? (int) ($result['actionable'] ?? $result['pending'])
+            : 0;
+        if ($actionable > 0) {
+            File::ensureDirectoryExists(dirname($flag));
+            File::put($flag, (string) $actionable);
+            File::ensureDirectoryExists(dirname($global));
+            File::put($global, '1');
+
+            return;
+        }
+        if (! in_array($result['skipped'], [null, 'unchanged', 'convert_cooldown'], true)) {
+            return;
+        }
+        if (is_file($flag)) {
+            File::delete($flag);
+        }
+        $any = glob(storage_path('app/connector/*/icons/.backlog'));
+        if (($any === false || $any === []) && is_file($global)) {
+            File::delete($global);
+        }
+    }
+
+    /**
+     * @param  list<array{key: string, ext: string, remote: string, pngLocal: string, force: bool}>  $work
+     * @return list<array{key: string, ext: string, remote: string, pngLocal: string, force: bool}>
+     */
+    private function rotateAfterCursor(string $dir, array $work): array
+    {
+        $path = $dir.'/.icon-cursor';
+        if (! is_file($path) || $work === []) {
+            return $work;
+        }
+        $cursor = trim((string) file_get_contents($path));
+        if ($cursor === '') {
+            return $work;
+        }
+        foreach ($work as $index => $job) {
+            if ($job['key'] !== $cursor) {
+                continue;
+            }
+
+            return array_values(array_merge(
+                array_slice($work, $index + 1),
+                array_slice($work, 0, $index + 1),
+            ));
+        }
+
+        return $work;
     }
 
     /**
