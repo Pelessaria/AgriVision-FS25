@@ -27,7 +27,7 @@ import { FarmSwitcher } from "./components/farm-switcher"
 import { BrandMark, Toasts, useTimeLabel } from "./components/ui"
 import { seedNotifications, type AppNotification } from "./demo-notifications"
 import { i18n } from "./i18n"
-import { APP_MODULES, MODULE_SECTIONS, type ModuleId } from "./modules"
+import { APP_MODULES, MODULE_SECTIONS, moduleIsReady, type ModuleId } from "./modules"
 import { useStore } from "./store"
 import { MANAGEMENT_VERSION } from "./version"
 
@@ -224,6 +224,14 @@ export function Shell() {
                     <p className="nav-section-label nav-label">{t(section.labelKey)}</p>
                     {items.map((module) => {
                       const Icon = MODULE_ICONS[module.id]
+                      if (!moduleIsReady(module.id)) {
+                        return (
+                          <span key={module.id} className="is-unavailable" aria-disabled="true">
+                            <Icon className="icon" />
+                            <span className="nav-label">{t(module.labelKey)}</span>
+                          </span>
+                        )
+                      }
                       return (
                         <NavLink key={module.id} to={`/w/${workspace.id}/${module.path}`}>
                           <Icon className="icon" />

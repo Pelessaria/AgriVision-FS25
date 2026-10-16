@@ -8,7 +8,7 @@ export type ModuleAccess = "read" | "write"
 
 export type GlobalRole = "admin" | "member"
 
-export type VehicleCategory = "tractor" | "harvester" | "trailer" | "tool"
+export type VehicleCategory = "tractor" | "harvester" | "trailer" | "tool" | "pallet"
 
 export interface LocalizedText {
   de: string

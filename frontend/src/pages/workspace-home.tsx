@@ -5,7 +5,7 @@ import { apiWorkspaceVehicles } from "../api"
 import { RequiredModsPanel } from "../components/required-mods"
 import { EmptyState, MissingValue, MissingWorkspace, PermissionBlock, useTimeLabel } from "../components/ui"
 import { farmDisplayName } from "../farm-label"
-import { APP_MODULES } from "../modules"
+import { APP_MODULES, moduleIsReady } from "../modules"
 import { useStore } from "../store"
 import type { Vehicle } from "../types"
 import { useWorkspaceRoute } from "../use-workspace"
@@ -209,12 +209,19 @@ export function WorkspaceHomePage() {
           <p className="hint">{t("workspace.shortcutsLead")}</p>
           {shortcuts.length === 0 ? <p className="muted">{t("workspace.shortcutsEmpty")}</p> : null}
           <div className="ws-module-grid">
-            {shortcuts.map((module) => (
-              <Link key={module.id} className="ws-module-link" to={`/w/${workspace.id}/${module.path}`}>
-                <strong>{t(module.labelKey)}</strong>
-                <span className="faint">{t("workspace.openModule")}</span>
-              </Link>
-            ))}
+            {shortcuts.map((module) =>
+              moduleIsReady(module.id) ? (
+                <Link key={module.id} className="ws-module-link" to={`/w/${workspace.id}/${module.path}`}>
+                  <strong>{t(module.labelKey)}</strong>
+                  <span className="faint">{t("workspace.openModule")}</span>
+                </Link>
+              ) : (
+                <span key={module.id} className="ws-module-link is-unavailable" aria-disabled="true">
+                  <strong>{t(module.labelKey)}</strong>
+                  <span className="faint">{t("modules.unavailable")}</span>
+                </span>
+              ),
+            )}
           </div>
         </section>
 

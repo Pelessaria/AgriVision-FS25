@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type SyntheticEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
-import { LayoutGrid, LoaderCircle, RefreshCw, Tractor, Truck, Wheat, Wrench } from "lucide-react"
+import { Boxes, LayoutGrid, LoaderCircle, RefreshCw, Tractor, Truck, Wheat, Wrench } from "lucide-react"
 import { apiWorkspaceSyncIcons, apiWorkspaceVehicles } from "../api"
 import { EmptyState, MissingWorkspace, PermissionBlock } from "../components/ui"
 import { farmDisplayName } from "../farm-label"
@@ -9,12 +9,13 @@ import { useWorkspaceRoute } from "../use-workspace"
 import { useStore } from "../store"
 import { VehicleGauges } from "../components/equip-gauge"
 import type { Vehicle, VehicleCategory } from "../types"
-import { vehicleBrand, vehicleDisplayName } from "../vehicle-label"
+import { isPallet, vehicleBrand, vehicleDisplayName } from "../vehicle-label"
 
-type EquipmentFilter = "all" | "tractor" | "trailer" | "tool" | "selfpropelled"
+type EquipmentFilter = "all" | "tractor" | "trailer" | "tool" | "selfpropelled" | "pallet"
 
 function matchesFilter(vehicle: Vehicle, filter: EquipmentFilter) {
-  if (filter === "all") return true
+  if (isPallet(vehicle)) return filter === "pallet"
+  if (filter === "all" || filter === "pallet") return filter === "all"
   if (filter === "selfpropelled") return vehicle.category === "harvester"
   return vehicle.category === filter
 }
@@ -32,9 +33,11 @@ function CategoryIcon({ category }: { category: EquipmentFilter }) {
         ? Truck
         : category === "tool"
           ? Wrench
-          : category === "selfpropelled"
+          :     category === "selfpropelled"
             ? Wheat
-            : LayoutGrid
+            : category === "pallet"
+              ? Boxes
+              : LayoutGrid
   return <Icon className="icon" aria-hidden="true" />
 }
 
@@ -171,6 +174,7 @@ export function VehiclesPage() {
     { id: "trailer", label: t("vehicles.trailer") },
     { id: "tool", label: t("vehicles.tool") },
     { id: "selfpropelled", label: t("vehicles.selfpropelled") },
+    { id: "pallet", label: t("vehicles.pallet") },
   ]
 
   return (
@@ -229,7 +233,7 @@ export function VehiclesPage() {
               onClick={() => setFilter(item.id)}
             >
               <CategoryIcon category={item.id} />
-              <span className="sr-only">{item.label}</span>
+              <span>{item.label}</span>
             </button>
           ))}
         </nav>
@@ -280,9 +284,15 @@ export function VehiclesPage() {
                     <img src={vehicle.iconUrl} alt="" onError={onIconError} />
                   ) : null}
                   <Tractor className={`icon icon-fallback${vehicle.iconUrl ? " is-hidden" : ""}`} />
-                  <span className="equip-card-cat" title={t(categoryLabelKey(vehicle.category))}>
+                  <span className="equip-card-cat" title={t(categoryLabelKey(isPallet(vehicle) ? "pallet" : vehicle.category))}>
                     <CategoryIcon
-                      category={vehicle.category === "harvester" ? "selfpropelled" : vehicle.category}
+                      category={
+                        isPallet(vehicle)
+                          ? "pallet"
+                          : vehicle.category === "harvester"
+                            ? "selfpropelled"
+                            : vehicle.category
+                      }
                     />
                   </span>
                   <span className="equip-card-caption">

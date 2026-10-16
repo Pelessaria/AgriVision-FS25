@@ -222,7 +222,12 @@ final class WorkspaceFeedService
                         : 'feed-'.$workspace->public_id.'-'.$index,
                     'workspaceId' => $workspace->public_id,
                     'name' => $vehicle['name'] ?? 'Fahrzeug',
-                    'category' => self::mapVehicleCategory($vehicle['category'] ?? null, $vehicle['type'] ?? null),
+                    'category' => self::mapVehicleCategory(
+                        $vehicle['category'] ?? null,
+                        $vehicle['type'] ?? null,
+                        is_string($filename) ? $filename : null,
+                        isset($vehicle['name']) && is_string($vehicle['name']) ? $vehicle['name'] : null,
+                    ),
                     'farmId' => $vehicle['farmId'] ?? null,
                     'storeKey' => $storeKey,
                     'modKey' => $modKey,
@@ -395,9 +400,12 @@ final class WorkspaceFeedService
         return (float) $value;
     }
 
-    private static function mapVehicleCategory(?string $category, ?string $type): string
+    private static function mapVehicleCategory(?string $category, ?string $type, ?string $filename = null, ?string $name = null): string
     {
-        $hay = strtolower(trim(($category ?? '').' '.($type ?? '')));
+        $hay = strtolower(trim(($category ?? '').' '.($type ?? '').' '.($filename ?? '').' '.($name ?? '')));
+        if (str_contains($hay, 'pallet') || str_contains($hay, '/palette')) {
+            return 'pallet';
+        }
         if (str_contains($hay, 'harvest') || str_contains($hay, 'combine')) {
             return 'harvester';
         }

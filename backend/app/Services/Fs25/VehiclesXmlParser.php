@@ -58,6 +58,7 @@ final class VehiclesXmlParser
                 'z' => $z,
                 'wear' => self::wearFromNode($node),
                 'plate' => self::plateFromNode($node),
+                ...self::fluidsFromNode($node),
             ];
         }
 
@@ -114,6 +115,7 @@ final class VehiclesXmlParser
             if (preg_match('/<licensePlate\b[^>]*\bcharacters="([^"]*)"/i', $inner, $m)) {
                 $plate = trim(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8')) ?: null;
             }
+            $fluids = self::fluidsFromInner($inner);
             $vehicles[] = [
                 'uniqueId' => $uniqueId,
                 'farmId' => $farmId,
@@ -125,6 +127,7 @@ final class VehiclesXmlParser
                 'z' => $z,
                 'wear' => $wear,
                 'plate' => $plate,
+                ...$fluids,
             ];
         }
 
@@ -177,6 +180,82 @@ final class VehiclesXmlParser
         }
 
         return [(float) $parts[0], (float) $parts[1], (float) $parts[2]];
+    }
+
+    /**
+     * @return array{fuel: float|null, fuelCapacity: float|null, defLevel: float|null, defCapacity: float|null}
+     */
+    private static function fluidsFromNode(\SimpleXMLElement $node): array
+    {
+        $units = $node->xpath('.//fillUnit/unit') ?: [];
+        $blobs = [];
+        foreach ($units as $unit) {
+            if (! $unit instanceof \SimpleXMLElement) {
+                continue;
+            }
+            $blobs[] = $unit->asXML() ?: '';
+        }
+
+        return self::fluidsFromBlobs($blobs);
+    }
+
+    /**
+     * @return array{fuel: float|null, fuelCapacity: float|null, defLevel: float|null, defCapacity: float|null}
+     */
+    private static function fluidsFromInner(string $inner): array
+    {
+        preg_match_all('/<unit\b[^>]*\/?>/i', $inner, $matches);
+
+        return self::fluidsFromBlobs($matches[0] ?? []);
+    }
+
+    /**
+     * @param  list<string>  $blobs
+     * @return array{fuel: float|null, fuelCapacity: float|null, defLevel: float|null, defCapacity: float|null}
+     */
+    private static function fluidsFromBlobs(array $blobs): array
+    {
+        $fuel = null;
+        $fuelCapacity = null;
+        $defLevel = null;
+        $defCapacity = null;
+        foreach ($blobs as $blob) {
+            if (! preg_match('/\bfillType="([^"]+)"/i', $blob, $type)) {
+                continue;
+            }
+            $name = strtoupper($type[1]);
+            $level = null;
+            $capacity = null;
+            if (preg_match('/\bfillLevel="([^"]+)"/i', $blob, $levelMatch) && is_numeric($levelMatch[1])) {
+                $level = (float) $levelMatch[1];
+            }
+            if (preg_match('/\bcapacity="([^"]+)"/i', $blob, $capacityMatch) && is_numeric($capacityMatch[1])) {
+                $capacity = (float) $capacityMatch[1];
+            }
+            if ($level === null) {
+                continue;
+            }
+            $isDef = $name === 'DEF' || $name === 'ADBLUE';
+            $isFuel = in_array($name, ['DIESEL', 'ELECTRICCHARGE', 'METHANE'], true);
+            if ($isDef) {
+                $defLevel = ($defLevel ?? 0) + $level;
+                if ($capacity !== null) {
+                    $defCapacity = ($defCapacity ?? 0) + $capacity;
+                }
+            } elseif ($isFuel) {
+                $fuel = ($fuel ?? 0) + $level;
+                if ($capacity !== null) {
+                    $fuelCapacity = ($fuelCapacity ?? 0) + $capacity;
+                }
+            }
+        }
+
+        return [
+            'fuel' => $fuel,
+            'fuelCapacity' => $fuelCapacity,
+            'defLevel' => $defLevel,
+            'defCapacity' => $defCapacity,
+        ];
     }
 
     private static function wearFromNode(\SimpleXMLElement $node): ?int

@@ -106,6 +106,12 @@ function matchBrand(source: string) {
   return null
 }
 
+export function isPallet(vehicle: Pick<Vehicle, "category" | "filename" | "storeKey" | "name">) {
+  if (vehicle.category === "pallet") return true
+  const hay = `${vehicle.filename ?? ""} ${vehicle.storeKey ?? ""} ${vehicle.name ?? ""}`.toLowerCase()
+  return hay.includes("pallet")
+}
+
 export function vehicleBrand(vehicle: Pick<Vehicle, "name" | "brand" | "filename" | "modKey">) {
   const explicit = vehicle.brand?.trim()
   if (explicit) return explicit

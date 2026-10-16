@@ -25,6 +25,12 @@ const LEGACY_MODULE_IDS: Record<string, ModuleId> = {
   vehicles: "equipment",
 }
 
+const READY_MODULES = new Set<ModuleId>(["equipment"])
+
+export function moduleIsReady(id: ModuleId) {
+  return READY_MODULES.has(id)
+}
+
 export function moduleById(id: string) {
   return APP_MODULES.find((item) => item.id === id) ?? null
 }

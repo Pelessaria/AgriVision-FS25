@@ -12,7 +12,7 @@
 
 AgriVisionConnector = {}
 AgriVisionConnector.MOD_NAME = "FS25_AgriVisionConnector"
-AgriVisionConnector.VERSION = "0.1.2.10"
+AgriVisionConnector.VERSION = "0.1.2.11"
 AgriVisionConnector.SCHEMA = "1"
 AgriVisionConnector.TICK_MS = 5000
 AgriVisionConnector.HELLO_EVERY_MS = 60000
@@ -580,42 +580,104 @@ function AgriVisionConnector:finiteNumber(value)
     return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
 end
 
+function AgriVisionConnector:fillTypeName(vehicle, index, rawType)
+    if type(rawType) == "string" and rawType ~= "" then
+        return string.upper(rawType)
+    end
+    if type(rawType) == "table" and type(rawType.name) == "string" then
+        return string.upper(rawType.name)
+    end
+    local typeIndex = rawType
+    if type(typeIndex) ~= "number" and vehicle.getFillUnitFillType ~= nil then
+        local ok, value = pcall(function()
+            return vehicle:getFillUnitFillType(index)
+        end)
+        if ok then
+            if type(value) == "string" then
+                return string.upper(value)
+            end
+            if type(value) == "table" and type(value.name) == "string" then
+                return string.upper(value.name)
+            end
+            typeIndex = value
+        end
+    end
+    if type(typeIndex) == "number" and g_fillTypeManager ~= nil then
+        if g_fillTypeManager.getFillTypeNameByIndex ~= nil then
+            local ok, name = pcall(function()
+                return g_fillTypeManager:getFillTypeNameByIndex(typeIndex)
+            end)
+            if ok and type(name) == "string" and name ~= "" then
+                return string.upper(name)
+            end
+        end
+        if g_fillTypeManager.getFillTypeByIndex ~= nil then
+            local ok, fillType = pcall(function()
+                return g_fillTypeManager:getFillTypeByIndex(typeIndex)
+            end)
+            if ok and type(fillType) == "table" and type(fillType.name) == "string" then
+                return string.upper(fillType.name)
+            end
+        end
+    end
+    if FillType ~= nil and type(typeIndex) == "number" then
+        if typeIndex == FillType.DIESEL then
+            return "DIESEL"
+        end
+        if typeIndex == FillType.DEF then
+            return "DEF"
+        end
+        if FillType.ELECTRICCHARGE ~= nil and typeIndex == FillType.ELECTRICCHARGE then
+            return "ELECTRICCHARGE"
+        end
+        if FillType.METHANE ~= nil and typeIndex == FillType.METHANE then
+            return "METHANE"
+        end
+    end
+    return nil
+end
+
 --- Diesel / electric / methane summed as fuel. DEF only when a real tank exists.
 function AgriVisionConnector:vehicleFluids(vehicle)
-    if vehicle == nil or vehicle.getFillUnitCount == nil or vehicle.getFillUnitFillLevel == nil then
+    if vehicle == nil then
         return nil, nil, nil, nil
     end
-    local okCount, count = pcall(function()
-        return vehicle:getFillUnitCount()
-    end)
-    if not okCount or type(count) ~= "number" or count < 1 then
+    local count = 0
+    local specUnits = nil
+    if vehicle.spec_fillUnit ~= nil and type(vehicle.spec_fillUnit.fillUnits) == "table" then
+        specUnits = vehicle.spec_fillUnit.fillUnits
+        count = #specUnits
+    end
+    if count < 1 and vehicle.getFillUnitCount ~= nil then
+        local okCount, rawCount = pcall(function()
+            return vehicle:getFillUnitCount()
+        end)
+        if okCount and type(rawCount) == "number" then
+            count = rawCount
+        end
+    end
+    if count < 1 then
         return nil, nil, nil, nil
     end
     local fuel, fuelCapacity, defLevel, defCapacity = nil, nil, nil, nil
     local fuelNames = { DIESEL = true, ELECTRICCHARGE = true, METHANE = true }
     for index = 1, count do
-        local typeName = nil
-        if vehicle.getFillUnitFillType ~= nil and g_fillTypeManager ~= nil and g_fillTypeManager.getFillTypeNameByIndex ~= nil then
-            local okType, fillType = pcall(function()
-                return vehicle:getFillUnitFillType(index)
+        local unit = specUnits ~= nil and specUnits[index] or nil
+        local typeName = self:fillTypeName(vehicle, index, unit ~= nil and unit.fillType or nil)
+        local level, capacity = nil, nil
+        if unit ~= nil and self:finiteNumber(unit.fillLevel) then
+            level = unit.fillLevel
+        elseif vehicle.getFillUnitFillLevel ~= nil then
+            local okLevel, rawLevel = pcall(function()
+                return vehicle:getFillUnitFillLevel(index)
             end)
-            if okType and fillType ~= nil then
-                local okName, name = pcall(function()
-                    return g_fillTypeManager:getFillTypeNameByIndex(fillType)
-                end)
-                if okName and type(name) == "string" then
-                    typeName = string.upper(name)
-                end
+            if okLevel and self:finiteNumber(rawLevel) then
+                level = rawLevel
             end
         end
-        local level, capacity = nil, nil
-        local okLevel, rawLevel = pcall(function()
-            return vehicle:getFillUnitFillLevel(index)
-        end)
-        if okLevel and self:finiteNumber(rawLevel) then
-            level = rawLevel
-        end
-        if vehicle.getFillUnitCapacity ~= nil then
+        if unit ~= nil and self:finiteNumber(unit.capacity) then
+            capacity = unit.capacity
+        elseif vehicle.getFillUnitCapacity ~= nil then
             local okCap, rawCap = pcall(function()
                 return vehicle:getFillUnitCapacity(index)
             end)

@@ -151,4 +151,23 @@ class VehicleFarmMatcherTest extends TestCase
         $this->assertSame(12, $parsed[0]['wear']);
         $this->assertSame('EF NW 701', $parsed[0]['plate']);
     }
+
+    public function test_parses_savegame_fuel_and_def(): void
+    {
+        $xml = <<<'XML'
+        <vehicles>
+          <vehicle filename="data/vehicles/fendt/fendt728.xml" uniqueId="v1" farmId="1">
+            <fillUnit>
+              <unit index="1" fillType="DIESEL" fillLevel="420" capacity="600"/>
+              <unit index="2" fillType="DEF" fillLevel="18" capacity="40"/>
+            </fillUnit>
+          </vehicle>
+        </vehicles>
+        XML;
+        $parsed = VehiclesXmlParser::parse($xml);
+        $this->assertSame(420.0, $parsed[0]['fuel']);
+        $this->assertSame(600.0, $parsed[0]['fuelCapacity']);
+        $this->assertSame(18.0, $parsed[0]['defLevel']);
+        $this->assertSame(40.0, $parsed[0]['defCapacity']);
+    }
 }
