@@ -454,6 +454,7 @@ export const en = {
     modKey: "Key",
     filename: "File",
     modBaseHint: "No mod — base-game vehicle or no mod path detected.",
+    backToList: "Back to equipment",
     unknownTitle: "Vehicle not found",
     unknownBody: "This identifier does not exist in this instance.",
   },

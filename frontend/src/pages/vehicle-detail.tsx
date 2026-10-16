@@ -9,9 +9,9 @@ import { useWorkspaceRoute } from "../use-workspace"
 import type { Vehicle } from "../types"
 
 function positionOf(vehicle: Vehicle) {
-  if (vehicle.x === null || vehicle.y === null || vehicle.z === null) return null
-  const format = (value: number) => value.toFixed(1)
-  return `${format(vehicle.x)}, ${format(vehicle.y)}, ${format(vehicle.z)}`
+  if (vehicle.x === null || vehicle.z === null) return null
+  const format = (value: number) => value.toFixed(0)
+  return `${format(vehicle.x)} / ${format(vehicle.z)}`
 }
 
 function vehicleDisplayName(name: string) {
@@ -81,102 +81,80 @@ export function VehicleDetailPage() {
   const modName = modDisplayName(modKey)
   const modZip = modZipLabel(modKey)
   const fileLabel = shortFilename(vehicle.filename)
+  const farmLabel =
+    farmName ?? (vehicle.farmId === null ? t("unavailable") : t("vehicles.farmId", { id: vehicle.farmId }))
+  const hours =
+    vehicle.hours === null
+      ? t("unavailable")
+      : vehicle.hours.toLocaleString(i18n.language, { maximumFractionDigits: 1 })
 
   return (
     <section className="equip-detail">
-      <div className="equip-detail-hero">
-        <span className="equip-detail-icon" aria-hidden="true">
+      <Link className="equip-back" to={`/w/${id}/equipment`}>
+        {t("vehicles.backToList")}
+      </Link>
+
+      <div className="equip-detail-layout">
+        <div className="equip-detail-media" aria-hidden="true">
           {vehicle.iconUrl ? <img src={vehicle.iconUrl} alt="" onError={onIconError} /> : null}
           <Tractor className={`icon icon-fallback${vehicle.iconUrl ? " is-hidden" : ""}`} />
-        </span>
-        <div className="equip-detail-head">
-          <p className="hint">{t("vehicles.observed", { time: stamp(vehicle.observedAt, t("unavailable")) })}</p>
+        </div>
+
+        <div className="equip-detail-copy">
+          <p className="equip-kicker">
+            {t(categoryKey)}
+            <span>·</span>
+            {t("vehicles.observed", { time: stamp(vehicle.observedAt, t("unavailable")) })}
+          </p>
           <h1>{vehicleDisplayName(vehicle.name)}</h1>
-          <p className="equip-detail-cat">{t(categoryKey)}</p>
-        </div>
-      </div>
 
-      <div className="equip-detail-grid">
-        <div className="equip-detail-panel">
-          <h2>{t("vehicles.overview")}</h2>
-          <dl className="detail">
+          <div className="equip-stats">
             <div>
-              <dt>{t("vehicles.farm")}</dt>
-              <dd>
-                {farmName ??
-                  (vehicle.farmId === null ? t("unavailable") : t("vehicles.farmId", { id: vehicle.farmId }))}
-              </dd>
+              <span>{t("vehicles.hours")}</span>
+              <strong>{hours}</strong>
             </div>
             <div>
-              <dt>{t("vehicles.position")}</dt>
-              <dd>
+              <span>{t("vehicles.farm")}</span>
+              <strong>{farmLabel}</strong>
+            </div>
+            <div>
+              <span>{t("vehicles.position")}</span>
+              <strong>
                 <MissingValue text={positionOf(vehicle)} />
-              </dd>
+              </strong>
             </div>
-            <div>
-              <dt>{t("vehicles.hours")}</dt>
-              <dd>{vehicle.hours === null ? t("unavailable") : vehicle.hours.toLocaleString(i18n.language)}</dd>
-            </div>
-            <div>
-              <dt>{t("vehicles.fill")}</dt>
-              <dd>
-                <MissingValue text={fill} />
-              </dd>
-            </div>
-          </dl>
-        </div>
+            {fill ? (
+              <div>
+                <span>{t("vehicles.fill")}</span>
+                <strong>{fill}</strong>
+              </div>
+            ) : null}
+          </div>
 
-        <div className="equip-detail-panel">
-          <h2>{t("vehicles.modTitle")}</h2>
           {modKey ? (
-            <div className="equip-mod-row">
+            <article className="equip-mod-card">
               <span className="equip-mod-icon" aria-hidden="true">
-                {vehicle.modIconUrl ? (
-                  <img src={vehicle.modIconUrl} alt="" onError={onIconError} />
-                ) : null}
+                {vehicle.modIconUrl ? <img src={vehicle.modIconUrl} alt="" onError={onIconError} /> : null}
                 <Package className={`icon icon-fallback${vehicle.modIconUrl ? " is-hidden" : ""}`} />
               </span>
-              <dl className="detail equip-mod-meta">
-                <div>
-                  <dt>{t("vehicles.modName")}</dt>
-                  <dd>{modName}</dd>
-                </div>
-                <div>
-                  <dt>{t("vehicles.modZip")}</dt>
-                  <dd>
-                    <code>{modZip}</code>
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t("vehicles.modKey")}</dt>
-                  <dd>
-                    <code>{modKey}</code>
-                  </dd>
-                </div>
-                <div>
-                  <dt>{t("vehicles.filename")}</dt>
-                  <dd>
-                    <MissingValue text={fileLabel} />
-                  </dd>
-                </div>
-              </dl>
-            </div>
+              <div className="equip-mod-copy">
+                <p className="equip-kicker">{t("vehicles.modTitle")}</p>
+                <strong>{modName}</strong>
+                <code>{modZip}</code>
+                {fileLabel ? <span className="equip-mod-file">{fileLabel}</span> : null}
+              </div>
+            </article>
           ) : (
-            <p className="hint">{t("vehicles.modBaseHint")}</p>
+            <p className="equip-base">{t("vehicles.modBaseHint")}</p>
           )}
-          {vehicle.filename && modKey ? (
-            <p className="equip-mod-path faint" title={vehicle.filename}>
+
+          {vehicle.filename ? (
+            <p className="equip-path" title={vehicle.filename}>
               {vehicle.filename}
             </p>
           ) : null}
         </div>
       </div>
-
-      <p>
-        <Link className="btn btn-secondary" to={`/w/${id}/equipment`}>
-          {t("back")}
-        </Link>
-      </p>
     </section>
   )
 }

@@ -452,6 +452,7 @@ export const de = {
     modKey: "Schlüssel",
     filename: "Datei",
     modBaseHint: "Kein Mod — Fahrzeug aus dem Basisspiel oder ohne erkennbaren Mod-Pfad.",
+    backToList: "Zurück zu Equipment",
     unknownTitle: "Fahrzeug nicht gefunden",
     unknownBody: "Diese Kennung gibt es in dieser Instanz nicht.",
   },
