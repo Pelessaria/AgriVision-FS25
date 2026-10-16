@@ -104,10 +104,10 @@ Artisan::command('agrivision:schedule-status', function () {
     return $status['active'] ? 0 : 1;
 })->purpose('Report whether this install\'s scheduler cron is installed and running');
 
-Artisan::command('agrivision:icon-status', function () {
+Artisan::command('agrivision:icon-status', function (ConnectorSnapshotService $icons) {
     $cache = new \App\Services\Fs25\ModIconCacheService;
-    $bin = is_file(base_path('bin/dds2rgba')) && is_executable(base_path('bin/dds2rgba')) ? 'yes' : 'no';
-    $this->line('dds2rgba='.$bin);
+    $this->line('dds2rgba='.(\App\Services\Fs25\DdsToPng::externalToolAvailable() ? 'yes' : 'no'));
+    $exit = 0;
     foreach (Workspace::query()->cursor() as $workspace) {
         $dir = $cache->cacheDir($workspace);
         $state = storage_path('app/connector/'.$workspace->public_id.'/state');
@@ -119,15 +119,40 @@ Artisan::command('agrivision:icon-status', function () {
         $vehicles = is_file($state.'/vehicles_full.xml')
             ? substr_count((string) file_get_contents($state.'/vehicles_full.xml'), '<vehicle ')
             : 0;
+        $status = $icons->readIconStatus($workspace);
+        $inv = is_array($status['inventory'] ?? null) ? $status['inventory'] : null;
         $this->line(sprintf(
-            '%s manifest=%d vehicles=%d png=%d dds=%d',
+            '%s manifest=%d vehicles=%d disk_png=%d disk_dds=%d',
             $workspace->public_id,
             $manifest,
             $vehicles,
             $png,
             $dds
         ));
+        if ($inv !== null) {
+            $this->line(sprintf(
+                '  last sync at=%s png=%d ddsOnly=%d missing=%d pending=%s detail=%s',
+                $status['at'] ?? '-',
+                $inv['png'] ?? 0,
+                $inv['ddsOnly'] ?? 0,
+                $inv['missingFile'] ?? 0,
+                $status['pending'] ?? '-',
+                $status['detail'] ?? '-'
+            ));
+            foreach (($inv['formats'] ?? []) as $format => $count) {
+                $this->line(sprintf('  format %dx %s', $count, $format));
+            }
+            if (($inv['ddsOnly'] ?? 0) > 0 && ! \App\Services\Fs25\DdsToPng::externalToolAvailable()) {
+                $this->warn('  BC7 icons need bin/dds2rgba — see docs/INSTALLATION.md');
+                $exit = 1;
+            } elseif (($inv['ddsOnly'] ?? 0) > 0 || ($inv['missingFile'] ?? 0) > 0) {
+                $exit = 1;
+            }
+        } elseif ($manifest > 0 && $png === 0) {
+            $this->warn('  no .status.json yet — wait for cron or run php artisan agrivision:sync-store-icons');
+            $exit = 1;
+        }
     }
 
-    return 0;
-})->purpose('Show local connector icon cache counts per workspace');
+    return $exit;
+})->purpose('Show local connector icon cache counts and last sync inventory');

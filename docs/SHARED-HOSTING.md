@@ -86,12 +86,13 @@ Composer wird auf dem Webspace nicht ausgeführt.
 - Aufräumen alter Payloads läuft höchstens alle paar Stunden, gesteuert durch eine Zeile in der Datenbank, die parallele Requests aussperrt.
 - Auf einem VPS legt `scripts/setup-vps.sh` je Installation eine eigene Datei unter `/etc/cron.d/` an (`schedule:run` jede Minute). Eine weitere Kundeninstallation ist ein weiteres `--target` und überschreibt die erste nicht.
 - Wer auf Shared Hosting Cron hat, kann zusätzlich `php artisan schedule:run` jede Minute eintragen, oder einmal `php artisan agrivision:install-schedule` ausführen. Auf STRATO-Neuverträgen ist Cron derzeit kein Planungsbestandteil; dort zieht der Icon-Abgleich beim nächsten Dashboard-Aufruf nach.
+- Store-Icons in FS25 sind oft **BC7-DDS**. Die Umwandlung nach PNG braucht das Binary `backend/bin/dds2rgba` (gcc beim Install). Auf reinem Shared Hosting ohne Compiler und ohne auslieferbares Binary bleiben viele Icons im Cache als DDS und die Equipment-Liste zeigt Platzhalter. Für vollständige Icons ist ein VPS mit `build-essential` der unterstützte Weg ([INSTALLATION.md](INSTALLATION.md)).
 
 ## 8. Bekannte Grenzen
 
 - Keine Echtzeit unter einer Sekunde.
 - Lange Requests können vom Hoster gekappt werden. Dateiabrufe haben deshalb ein kurzes Zeitlimit und einen Fortsetzungszeiger.
-- `putenv`, `symlink` und `proc_open` sind auf Shared Hosts manchmal deaktiviert. Phase 3 prüft das auf STRATO oder einem vergleichbaren Paket und passt den Bootstrap an.
+- `putenv`, `symlink`, `proc_open` und `shell_exec` sind auf Shared Hosts manchmal deaktiviert. Ohne `shell_exec` kann `dds2rgba` nicht laufen — dann keine BC7-PNGs. Phase 3 prüft das auf STRATO oder einem vergleichbaren Paket.
 - Die Anwendung misst nicht CPU oder RAM des Webspace, außer der Hoster liefert dafür eine API. Eine solche API ist nicht angenommen.
 - PHP-Limits für Uploadgröße betreffen das Release-ZIP nur beim manuellen Upload, nicht die Laufzeit. Große Connector-Snapshots lehnt die API ab.
 

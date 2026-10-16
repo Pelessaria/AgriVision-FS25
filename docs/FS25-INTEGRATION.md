@@ -150,7 +150,7 @@ Der erste Mod tut nur dies:
 3. Er schreibt `hello.xml`, wenn der Schreibtest gelingt. Inhalt: Mod-Version, Spielzeit, UTC-Zeit des Schreibens, Liste der Farm-IDs. Je Hof stehen Name und Kontostand nur dann darin, wenn der Aufruf eine Zahl liefert. Eine gemeldete 0 bleibt 0. Liefert der Aufruf nichts, fehlt der Wert und das Dashboard zeigt „nicht verfügbar“.
 4. Er schreibt atomar, soweit die Engine das hergibt: temporäre Datei, dann der sichtbare Name. **Offen**, ob Umbenennen erlaubt ist. Fallback: eine Generation-Nummer in der Datei.
 5. **Fahrzeuge:** Full-Load nach Start und in grobem Intervall (`state/vehicles_full.xml`). Laufend später Delta; nach Save-Reload wieder Full-Load. Iteratoren werden erst nach Dedicated-Server-Probe finalisiert — bis dahin bleibt der Savegame-Feed die Meta-Quelle.
-6. **Icons:** Fahrzeug-StoreIcons bei Full-Load → `icons/store/<storeKey>.*` + Manifest (`kind=store`). Zuordnung über `storeKey`. Mod-Pack-Icons (`icons/mods/`) später. Backend sync gedrosselt, nur lokale Cache-Auslieferung.
+6. **Icons:** Fahrzeug-StoreIcons bei Full-Load → `icons/store/<storeKey>.*` + Manifest (`kind=store`). Zuordnung über `storeKey`. Mod-Pack-Icons (`icons/mods/`) später. Backend: Cron zieht Manifest und fehlende DDS lokal, wandelt nach PNG um (BC7 braucht `bin/dds2rgba`), Equipment liest nur den lokalen Cache — kein FTP pro Seitenaufruf.
 7. Er liest `command.xml` und unterstützt in Version 0 nur `noop` und `ping`. Kein Geld.
 8. Er markiert verarbeitete Befehls-IDs, damit ein Reconnect denselben Befehl nicht doppelt ausführt.
 9. Er tickt in Abständen von mehreren Sekunden, nicht pro Frame.

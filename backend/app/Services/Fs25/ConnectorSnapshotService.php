@@ -337,7 +337,11 @@ final class ConnectorSnapshotService
             return $this->syncResult(skipped: 'connect_failed', detail: $e->getMessage());
         }
 
-        return $this->downloadIconJobs($client, $workspace, array_values($jobs), $budgetSec);
+        $jobList = array_values($jobs);
+        $result = $this->downloadIconJobs($client, $workspace, $jobList, $budgetSec);
+        $this->recordIconPass($workspace, $jobList, $result);
+
+        return $result;
     }
 
     /**
@@ -538,17 +542,6 @@ final class ConnectorSnapshotService
             $this->writeIconCatalog($dir, $jobs);
         }
 
-        Log::info('AgriVision icon sync pass', [
-            'workspace' => $workspace->public_id,
-            'listed' => $listed,
-            'downloaded' => $downloaded,
-            'converted' => $converted,
-            'errors' => $errors,
-            'pending' => $missing,
-            'actionable' => $actionable,
-            'firstError' => $firstError,
-        ]);
-
         return [
             'downloaded' => $downloaded,
             'converted' => $converted,
@@ -559,6 +552,115 @@ final class ConnectorSnapshotService
             'detail' => $firstError,
             'actionable' => $actionable,
         ];
+    }
+
+    /**
+     * @param  list<array{key: string, ext: string, remote: string}>  $jobs
+     * @param  array{downloaded: int, converted: int, skipped: string|null, pending: int, errors: int, listed: int, detail: string|null, actionable?: int}  $result
+     */
+    private function recordIconPass(Workspace $workspace, array $jobs, array $result): void
+    {
+        $inventory = $this->iconInventory($workspace, $jobs);
+        $payload = [
+            'at' => gmdate('c'),
+            'listed' => $result['listed'],
+            'downloaded' => $result['downloaded'],
+            'converted' => $result['converted'],
+            'errors' => $result['errors'],
+            'pending' => $result['pending'],
+            'actionable' => $result['actionable'] ?? $result['pending'],
+            'skipped' => $result['skipped'],
+            'detail' => $result['detail'],
+            'dds2rgba' => DdsToPng::externalToolAvailable(),
+            'inventory' => $inventory,
+        ];
+        $this->writeIconStatus($workspace, $payload);
+
+        Log::info('AgriVision icon sync pass', [
+            'workspace' => $workspace->public_id,
+            'listed' => $result['listed'],
+            'downloaded' => $result['downloaded'],
+            'converted' => $result['converted'],
+            'errors' => $result['errors'],
+            'pending' => $result['pending'],
+            'actionable' => $payload['actionable'],
+            'skipped' => $result['skipped'],
+            'png' => $inventory['png'],
+            'ddsOnly' => $inventory['ddsOnly'],
+            'missingFile' => $inventory['missingFile'],
+            'dds2rgba' => $payload['dds2rgba'],
+            'formats' => $inventory['formats'],
+            'firstError' => $result['detail'],
+        ]);
+    }
+
+    /**
+     * @param  list<array{key: string, ext: string, remote: string}>  $jobs
+     * @return array{png: int, ddsOnly: int, missingFile: int, formats: array<string, int>}
+     */
+    private function iconInventory(Workspace $workspace, array $jobs): array
+    {
+        $cache = new ModIconCacheService;
+        $png = 0;
+        $ddsOnly = 0;
+        $missingFile = 0;
+        $formats = [];
+        foreach ($jobs as $job) {
+            $safeKey = preg_replace('/[^a-zA-Z0-9._-]+/', '_', $job['key']) ?? 'icon';
+            if ($cache->localPath($workspace, $safeKey) !== null) {
+                $png++;
+                continue;
+            }
+            $ddsPath = $cache->localDdsPath($workspace, $safeKey);
+            if ($ddsPath === null) {
+                $missingFile++;
+                continue;
+            }
+            $ddsOnly++;
+            $bytes = @file_get_contents($ddsPath);
+            if (! is_string($bytes) || $bytes === '') {
+                continue;
+            }
+            $desc = DdsToPng::describe($bytes);
+            $formats[$desc] = ($formats[$desc] ?? 0) + 1;
+        }
+        arsort($formats);
+
+        return [
+            'png' => $png,
+            'ddsOnly' => $ddsOnly,
+            'missingFile' => $missingFile,
+            'formats' => array_slice($formats, 0, 8, true),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function writeIconStatus(Workspace $workspace, array $payload): void
+    {
+        $path = $this->iconStatusPath($workspace);
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)."\n");
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function readIconStatus(Workspace $workspace): ?array
+    {
+        $path = $this->iconStatusPath($workspace);
+        if (! is_file($path)) {
+            return null;
+        }
+        $decoded = json_decode((string) file_get_contents($path), true);
+
+        return is_array($decoded) ? $decoded : null;
+    }
+
+    private function iconStatusPath(Workspace $workspace): string
+    {
+        return storage_path('app/connector/'.$workspace->public_id.'/icons/.status.json');
     }
 
     /**

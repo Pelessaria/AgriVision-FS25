@@ -90,7 +90,7 @@ Fehlende optionale Felder = Dashboard zeigt „nicht verfügbar“, nie erfunden
 </iconsManifest>
 ```
 
-Backend: Manifest ist Quelle der Wahrheit für Store-Icons. Sync ist gedrosselt (Skip wenn lokal vorhanden; nicht bei jedem Page-Load / Image-Request).
+Backend: Manifest ist Quelle der Wahrheit für Store-Icons. Cron aktualisiert den lokalen Cache unter `storage/app/connector/<workspace>/` (State-XML + Icons). Page-Loads öffnen kein FTP. DDS→PNG: DXT1/3/5 in PHP, **BC7 (DXGI 98/99)** über `bin/dds2rgba` (siehe [INSTALLATION.md](INSTALLATION.md)). Diagnose: `php artisan agrivision:icon-status`, Statusdatei `icons/.status.json`.
 
 ### 4.4 `command.xml` / `command_result.xml` (v0)
 

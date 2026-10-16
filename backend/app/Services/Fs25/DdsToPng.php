@@ -2,11 +2,21 @@
 
 namespace App\Services\Fs25;
 
+use Illuminate\Support\Facades\Log;
+
 /**
- * Minimal DDS → PNG for FS25 store icons (DXT1 / DXT5 / uncompressed BGRA).
+ * Minimal DDS → PNG for FS25 store icons (DXT1 / DXT5 / BC7 / uncompressed BGRA).
+ * BC7 (DXGI 98/99) needs backend/bin/dds2rgba (compiled from tools/dds2rgba).
  */
 final class DdsToPng
 {
+    private static bool $loggedMissingBc7Tool = false;
+
+    public static function externalToolAvailable(): bool
+    {
+        return self::dds2rgbaBinary() !== null;
+    }
+
     public static function convert(string $ddsBytes): ?string
     {
         if (strlen($ddsBytes) < 128 || substr($ddsBytes, 0, 4) !== 'DDS ') {
@@ -37,7 +47,7 @@ final class DdsToPng
                 74, 75 => self::decodeDxt3($data, $width, $height),
                 77, 78 => self::decodeDxt5($data, $width, $height),
                 87, 91 => self::decodeBgra($data, $width, $height),
-                98, 99 => self::decodeViaExternalTool($ddsBytes),
+                98, 99 => self::decodeBc7($ddsBytes),
                 default => null,
             };
         } else {
@@ -153,9 +163,22 @@ final class DdsToPng
         return is_string($png) && $png !== '' ? $png : null;
     }
 
+    private static function decodeBc7(string $ddsBytes): ?string
+    {
+        if (! self::externalToolAvailable()) {
+            if (! self::$loggedMissingBc7Tool) {
+                self::$loggedMissingBc7Tool = true;
+                Log::warning('AgriVision DDS BC7 needs bin/dds2rgba (apt install build-essential, then gcc -O2 -o bin/dds2rgba tools/dds2rgba/main.c)');
+            }
+
+            return null;
+        }
+
+        return self::decodeViaExternalTool($ddsBytes);
+    }
+
     /**
-     * BC7 needs the bundled dds2rgba helper (pure PHP BC7 is too large for shared hosts
-     * that also lack the binary — VPS installer compiles tools/dds2rgba).
+     * BC7 needs the bundled dds2rgba helper. VPS installer compiles tools/dds2rgba.
      */
     private static function decodeViaExternalTool(string $ddsBytes): ?string
     {

@@ -1,7 +1,7 @@
 # Self-Hosting
 
 **Status:** Optionaler VPS-Betrieb mit demselben Code wie Shared Hosting. **Kein Docker.**  
-**Stand:** 14. Oktober 2026
+**Stand:** 17. Oktober 2026
 
 ## 1. Wann dieser Weg passt
 
@@ -16,8 +16,11 @@ Self-Hosting ist keine Voraussetzung. Wer nur Webspace hat, bleibt bei [SHARED-H
 3. Code aus dem öffentlichen GitHub-Repo bzw. Release-ZIP (mit `vendor/`).
 4. `.env` setzen, Migrationen ausführen (Installer oder `php artisan migrate`).
 5. Updates: Einstellungen → Update oder `php artisan agrivision:update --apply` — siehe [UPDATES.md](UPDATES.md).
+6. Für Store-Icons: `build-essential` (gcc), damit `backend/bin/dds2rgba` gebaut werden kann. Ohne dieses Binary bleiben neuere FS25-Icons (BC7) als DDS liegen und erscheinen nicht in der Equipment-Liste. Details: [INSTALLATION.md](INSTALLATION.md).
 
 Ein Cron-Eintrag je Installation (`/etc/cron.d/agrivision-<kennung>`) führt `schedule:run` jede Minute aus. Eine zweite Installation auf demselben VPS bekommt ein eigenes Verzeichnis, eine eigene Datenbank und eine eigene Cron-Datei. Fehlt Cron, läuft der Icon-Abgleich weiter beim nächsten Dashboard-Aufruf.
+
+Diagnose auf dem Server: `php artisan agrivision:schedule-status`, `php artisan agrivision:icon-status`.
 
 ## 3. Lokale Bridge zum Spiel
 
