@@ -14,6 +14,16 @@ function positionOf(vehicle: Vehicle) {
   return `${format(vehicle.x)}, ${format(vehicle.y)}, ${format(vehicle.z)}`
 }
 
+function vehicleDisplayName(name: string) {
+  const raw = name.trim()
+  const match = raw.match(/^\$l10n_(?:shopItem_)?(.+)$/i)
+  if (!match?.[1]) return raw
+  return match[1]
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
+}
+
 function modZipLabel(modKey: string | null | undefined) {
   if (!modKey) return null
   return modKey.toLowerCase().endsWith(".zip") ? modKey : `${modKey}.zip`
@@ -81,7 +91,7 @@ export function VehicleDetailPage() {
         </span>
         <div className="equip-detail-head">
           <p className="hint">{t("vehicles.observed", { time: stamp(vehicle.observedAt, t("unavailable")) })}</p>
-          <h1>{vehicle.name}</h1>
+          <h1>{vehicleDisplayName(vehicle.name)}</h1>
           <p className="equip-detail-cat">{t(categoryKey)}</p>
         </div>
       </div>

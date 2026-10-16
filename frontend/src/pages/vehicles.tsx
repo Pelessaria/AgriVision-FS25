@@ -1,21 +1,15 @@
 import { useEffect, useMemo, useState, type SyntheticEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
-import { LoaderCircle, Package, RefreshCw, Tractor } from "lucide-react"
+import { LoaderCircle, RefreshCw, Tractor } from "lucide-react"
 import { apiWorkspaceSyncIcons, apiWorkspaceVehicles } from "../api"
-import { EmptyState, MissingWorkspace, PermissionBlock, useTimeLabel } from "../components/ui"
+import { EmptyState, MissingWorkspace, PermissionBlock } from "../components/ui"
 import { farmDisplayName } from "../farm-label"
 import { useWorkspaceRoute } from "../use-workspace"
 import { useStore } from "../store"
 import type { Vehicle, VehicleCategory } from "../types"
 
 type EquipmentFilter = "all" | "tractor" | "trailer" | "tool" | "selfpropelled"
-
-function positionOf(vehicle: Vehicle) {
-  if (vehicle.x === null || vehicle.y === null || vehicle.z === null) return null
-  const format = (value: number) => value.toFixed(0)
-  return `${format(vehicle.x)} / ${format(vehicle.z)}`
-}
 
 function matchesFilter(vehicle: Vehicle, filter: EquipmentFilter) {
   if (filter === "all") return true
@@ -26,6 +20,17 @@ function matchesFilter(vehicle: Vehicle, filter: EquipmentFilter) {
 function categoryLabelKey(category: VehicleCategory) {
   if (category === "harvester") return "vehicles.selfpropelled"
   return `vehicles.${category}`
+}
+
+/** Engine often sends $l10n_shopItem_fooBar — show a readable fallback. */
+function vehicleDisplayName(name: string) {
+  const raw = name.trim()
+  const match = raw.match(/^\$l10n_(?:shopItem_)?(.+)$/i)
+  if (!match?.[1]) return raw
+  return match[1]
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .trim()
 }
 
 function modDisplayName(modKey: string | null | undefined) {
@@ -39,25 +44,9 @@ function onIconError(event: SyntheticEvent<HTMLImageElement>) {
   wrap?.querySelector(".icon-fallback")?.classList.remove("is-hidden")
 }
 
-function EquipmentIcon({
-  url,
-  className,
-}: {
-  url: string | null | undefined
-  className?: string
-}) {
-  return (
-    <span className={className ?? "equip-card-icon"} aria-hidden="true">
-      {url ? <img src={url} alt="" onError={onIconError} /> : null}
-      <Tractor className={`icon icon-fallback${url ? " is-hidden" : ""}`} />
-    </span>
-  )
-}
-
 export function VehiclesPage() {
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
-  const stamp = useTimeLabel()
   const {
     vehicles,
     liveMode,
@@ -155,13 +144,13 @@ export function VehiclesPage() {
       .filter((vehicle) => matchesFilter(vehicle, filter))
       .filter((vehicle) => {
         if (!needle) return true
+        const title = vehicleDisplayName(vehicle.name).toLocaleLowerCase()
         const mod = (vehicle.modKey ?? "").toLocaleLowerCase()
-        return (
-          vehicle.name.toLocaleLowerCase().includes(needle) ||
-          mod.includes(needle)
-        )
+        return title.includes(needle) || mod.includes(needle) || vehicle.name.toLocaleLowerCase().includes(needle)
       })
-      .sort((a, b) => a.name.localeCompare(b.name, i18n.language))
+      .sort((a, b) =>
+        vehicleDisplayName(a.name).localeCompare(vehicleDisplayName(b.name), i18n.language),
+      )
   }, [farm, filter, i18n.language, id, query, vehicles])
 
   if (!workspace) return <MissingWorkspace />
@@ -200,24 +189,23 @@ export function VehiclesPage() {
         </div>
       </div>
 
-      <nav className="access-tabs equipment-tabs" role="tablist" aria-label={t("vehicles.category")}>
-        {filters.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={filter === item.id}
-            className={filter === item.id ? "access-tab active" : "access-tab"}
-            onClick={() => setFilter(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </nav>
-
-      <div className="filters">
-        <label className="field">
-          <span>{t("vehicles.search")}</span>
+      <div className="equip-toolbar">
+        <nav className="access-tabs equipment-tabs" role="tablist" aria-label={t("vehicles.category")}>
+          {filters.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={filter === item.id}
+              className={filter === item.id ? "access-tab active" : "access-tab"}
+              onClick={() => setFilter(item.id)}
+            >
+              {item.label}
+            </button>
+          ))}
+        </nav>
+        <label className="field equip-search">
+          <span className="sr-only">{t("vehicles.search")}</span>
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -238,12 +226,14 @@ export function VehiclesPage() {
             const farmName = linked
               ? farmDisplayName(linked, t)
               : vehicle.farmId === null
-                ? t("unavailable")
+                ? null
                 : t("vehicles.farmId", { id: vehicle.farmId })
-            const pos = positionOf(vehicle)
             const hours =
-              vehicle.hours === null ? null : vehicle.hours.toLocaleString(i18n.language, { maximumFractionDigits: 0 })
+              vehicle.hours === null
+                ? null
+                : `${vehicle.hours.toLocaleString(i18n.language, { maximumFractionDigits: 0 })} h`
             const modName = modDisplayName(vehicle.modKey)
+            const title = vehicleDisplayName(vehicle.name)
 
             return (
               <button
@@ -252,34 +242,21 @@ export function VehiclesPage() {
                 className="equip-card"
                 onClick={() => navigate(`/w/${id}/equipment/${vehicle.id}`)}
               >
-                <EquipmentIcon url={vehicle.iconUrl} />
-                <div className="equip-card-body">
-                  <strong className="equip-card-title">{vehicle.name}</strong>
+                <span className="equip-card-media" aria-hidden="true">
+                  {vehicle.iconUrl ? (
+                    <img src={vehicle.iconUrl} alt="" onError={onIconError} />
+                  ) : null}
+                  <Tractor className={`icon icon-fallback${vehicle.iconUrl ? " is-hidden" : ""}`} />
+                </span>
+                <span className="equip-card-body">
+                  <strong className="equip-card-title">{title}</strong>
                   <span className="equip-card-cat">{t(categoryLabelKey(vehicle.category))}</span>
-                  <dl className="equip-card-meta">
-                    <div>
-                      <dt>{t("vehicles.farm")}</dt>
-                      <dd>{farmName}</dd>
-                    </div>
-                    <div>
-                      <dt>{t("vehicles.hours")}</dt>
-                      <dd>{hours ?? t("unavailable")}</dd>
-                    </div>
-                    <div>
-                      <dt>{t("vehicles.position")}</dt>
-                      <dd>{pos ?? t("unavailable")}</dd>
-                    </div>
-                  </dl>
-                  {modName ? (
-                    <span className="equip-card-mod">
-                      <Package className="icon" aria-hidden="true" />
-                      {modName}
-                    </span>
-                  ) : (
-                    <span className="equip-card-mod faint">{t("vehicles.baseGame")}</span>
-                  )}
-                  <span className="equip-card-stamp faint">{stamp(vehicle.observedAt, t("unavailable"))}</span>
-                </div>
+                  <span className="equip-card-facts">
+                    {hours ? <span>{hours}</span> : null}
+                    {farmName ? <span>{farmName}</span> : null}
+                  </span>
+                  <span className="equip-card-mod">{modName ?? t("vehicles.baseGame")}</span>
+                </span>
               </button>
             )
           })}
