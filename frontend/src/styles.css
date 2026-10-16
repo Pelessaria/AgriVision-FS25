@@ -621,6 +621,7 @@ h1, h2, h3, p { margin: 0; }
   gap: 10px 14px;
 }
 .equip-card-body .equip-gauges {
+  justify-content: center;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
@@ -672,19 +673,23 @@ h1, h2, h3, p { margin: 0; }
   white-space: nowrap;
 }
 .equip-card-facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 28px;
   margin: 0;
+  text-align: center;
 }
 .equip-card-facts span {
   display: grid;
+  justify-items: center;
   gap: 3px;
   min-width: 0;
 }
 .equip-card-facts em {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   font-style: normal;
   font-size: 0.66rem;
