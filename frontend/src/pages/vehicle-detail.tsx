@@ -13,7 +13,7 @@ import { modDisplayName, modZipLabel, vehicleBrand, vehicleDisplayName } from ".
 function positionOf(vehicle: Vehicle) {
   if (vehicle.x === null || vehicle.z === null) return null
   const format = (value: number) => value.toFixed(0)
-  return `${format(vehicle.x)} / ${format(vehicle.z)}`
+  return `${format(vehicle.x)} / ${format(vehicle.z)} m`
 }
 
 function shortFilename(path: string | null | undefined) {
@@ -69,7 +69,7 @@ export function VehicleDetailPage() {
   const hours =
     vehicle.hours === null
       ? t("unavailable")
-      : vehicle.hours.toLocaleString(i18n.language, { maximumFractionDigits: 1 })
+      : `${vehicle.hours.toLocaleString(i18n.language, { maximumFractionDigits: 1 })} h`
 
   return (
     <section className="equip-detail">

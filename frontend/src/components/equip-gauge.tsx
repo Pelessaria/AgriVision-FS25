@@ -2,9 +2,9 @@ import type { Vehicle } from "../types"
 
 type GaugeTone = "fuel" | "wear" | "def"
 
-function amountLabel(value: number, max: number, language: string) {
+function amountLabel(value: number, max: number, language: string, unit: string) {
   const format = (n: number) => n.toLocaleString(language, { maximumFractionDigits: 0 })
-  return `${format(value)} / ${format(max)}`
+  return `${format(value)} / ${format(max)} ${unit}`
 }
 
 export function VehicleGauges({
@@ -25,7 +25,7 @@ export function VehicleGauges({
         label={label("vehicles.fuel")}
         value={vehicle.fuel}
         max={vehicle.fuelCapacity}
-        amount={amountLabel(vehicle.fuel, vehicle.fuelCapacity, language)}
+        amount={amountLabel(vehicle.fuel, vehicle.fuelCapacity, language, "l")}
       />,
     )
   }
@@ -37,7 +37,7 @@ export function VehicleGauges({
         label={label("vehicles.wear")}
         value={vehicle.wear}
         max={100}
-        amount={amountLabel(vehicle.wear, 100, language)}
+        amount={amountLabel(vehicle.wear, 100, language, "%")}
       />,
     )
   }
@@ -49,7 +49,7 @@ export function VehicleGauges({
         label={label("vehicles.def")}
         value={vehicle.defLevel}
         max={vehicle.defCapacity}
-        amount={amountLabel(vehicle.defLevel, vehicle.defCapacity, language)}
+        amount={amountLabel(vehicle.defLevel, vehicle.defCapacity, language, "l")}
       />,
     )
   }

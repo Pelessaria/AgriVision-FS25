@@ -498,14 +498,14 @@ h1, h2, h3, p { margin: 0; }
   text-align: left;
   cursor: pointer;
   color: inherit;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: #222a28;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line-strong));
   border-radius: 16px;
   overflow: hidden;
   transition: border-color 0.15s ease, transform 0.15s ease;
 }
 .equip-card:hover {
-  border-color: var(--line-strong);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line-strong));
   transform: translateY(-1px);
 }
 .equip-card:focus-visible {
@@ -526,7 +526,7 @@ h1, h2, h3, p { margin: 0; }
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.08) 46%, transparent 68%);
+  background: linear-gradient(90deg, rgba(16, 28, 22, 0.42) 0%, rgba(16, 28, 22, 0.08) 34%, transparent 58%);
   pointer-events: none;
 }
 .equip-card-media {
@@ -536,7 +536,8 @@ h1, h2, h3, p { margin: 0; }
   min-height: 0;
   border-bottom: 1px solid var(--line);
   background:
-    radial-gradient(120% 90% at 78% 88%, #1a2620 0%, #121816 48%, #0d100e 100%);
+    radial-gradient(64% 70% at 86% 72%, color-mix(in srgb, var(--accent) 18%, #2a3830) 0%, transparent 72%),
+    linear-gradient(165deg, #2a3530 0%, #1c2622 100%);
 }
 .equip-card-media img,
 .equip-sheet-media img {
@@ -571,8 +572,9 @@ h1, h2, h3, p { margin: 0; }
   height: auto;
   padding: 4px 8px 4px 6px;
   border-radius: 8px;
-  color: white;
-  background: color-mix(in srgb, black 42%, transparent);
+  color: #f4f7f4;
+  background: color-mix(in srgb, #163024 62%, transparent);
+  border: 1px solid color-mix(in srgb, white 18%, transparent);
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -611,32 +613,37 @@ h1, h2, h3, p { margin: 0; }
 }
 .equip-card-body {
   display: grid;
-  gap: 12px;
+  gap: 0;
   min-width: 0;
-  padding: 12px 14px 14px;
+  padding: 16px 18px 18px;
+  background: color-mix(in srgb, #2a3430 70%, var(--surface));
 }
 .equip-gauges {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px 14px;
+  gap: 12px 20px;
 }
 .equip-card-body .equip-gauges {
-  justify-content: center;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(108px, 1fr));
+  justify-items: center;
+  align-items: start;
+  gap: 8px 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, white 10%, transparent);
 }
 .equip-sheet > .equip-gauges { margin: 18px 28px 0; }
 .equip-gauge {
   display: grid;
   justify-items: center;
-  gap: 2px;
-  min-width: 64px;
+  gap: 4px;
+  min-width: 72px;
 }
 .equip-gauge-ring {
   position: relative;
-  width: 48px;
-  height: 48px;
+  width: 58px;
+  height: 58px;
 }
 .equip-gauge-ring svg {
   width: 100%;
@@ -644,39 +651,40 @@ h1, h2, h3, p { margin: 0; }
   transform: rotate(-90deg);
 }
 .equip-gauge-track,
-.equip-gauge-value { fill: none; stroke-width: 3; }
-.equip-gauge-track { stroke: var(--line-strong); }
+.equip-gauge-value { fill: none; stroke-width: 3.4; }
+.equip-gauge-track { stroke: color-mix(in srgb, white 16%, transparent); }
 .equip-gauge-value { stroke-linecap: round; }
-.equip-gauge.is-fuel .equip-gauge-value { stroke: #7dcea0; }
-.equip-gauge.is-wear .equip-gauge-value { stroke: #d4b483; }
-.equip-gauge.is-def .equip-gauge-value { stroke: #8eb4d4; }
+.equip-gauge.is-fuel .equip-gauge-value { stroke: #6ed98a; }
+.equip-gauge.is-wear .equip-gauge-value { stroke: #e2b15a; }
+.equip-gauge.is-def .equip-gauge-value { stroke: #7eb6e8; }
 .equip-gauge-pct {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  font-size: 0.62rem;
+  font-size: 0.74rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 .equip-gauge-label {
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 .equip-gauge-amt {
-  font-size: 0.72rem;
-  color: var(--text-muted);
+  font-size: 0.78rem;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .equip-card-facts {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px 28px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 14px 18px;
+  width: 100%;
   margin: 0;
   text-align: center;
 }
@@ -692,17 +700,18 @@ h1, h2, h3, p { margin: 0; }
   justify-content: center;
   gap: 6px;
   font-style: normal;
-  font-size: 0.66rem;
+  font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-faint);
+  color: var(--text-muted);
 }
 .equip-card-facts em .icon { width: 13px; height: 13px; }
 .equip-card-facts strong {
-  font-size: 0.92rem;
+  font-size: 1.02rem;
   font-weight: 600;
   letter-spacing: -0.01em;
+  color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

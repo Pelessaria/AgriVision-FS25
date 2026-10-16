@@ -269,7 +269,7 @@ export function VehiclesPage() {
             const position =
               vehicle.x === null || vehicle.z === null
                 ? null
-                : `${vehicle.x.toFixed(0)} / ${vehicle.z.toFixed(0)}`
+                : `${vehicle.x.toFixed(0)} / ${vehicle.z.toFixed(0)} m`
 
             return (
               <button
