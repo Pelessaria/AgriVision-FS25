@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState, type SyntheticEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
-import { LoaderCircle, RefreshCw, Tractor } from "lucide-react"
+import { LayoutGrid, LoaderCircle, RefreshCw, Tractor, Truck, Wheat, Wrench } from "lucide-react"
 import { apiWorkspaceSyncIcons, apiWorkspaceVehicles } from "../api"
 import { EmptyState, MissingWorkspace, PermissionBlock } from "../components/ui"
 import { farmDisplayName } from "../farm-label"
 import { useWorkspaceRoute } from "../use-workspace"
 import { useStore } from "../store"
+import { VehicleGauges } from "../components/equip-gauge"
 import type { Vehicle, VehicleCategory } from "../types"
-import { modDisplayName, vehicleBrand, vehicleDisplayName } from "../vehicle-label"
+import { vehicleBrand, vehicleDisplayName } from "../vehicle-label"
 
 type EquipmentFilter = "all" | "tractor" | "trailer" | "tool" | "selfpropelled"
 
@@ -21,6 +22,20 @@ function matchesFilter(vehicle: Vehicle, filter: EquipmentFilter) {
 function categoryLabelKey(category: VehicleCategory) {
   if (category === "harvester") return "vehicles.selfpropelled"
   return `vehicles.${category}`
+}
+
+function CategoryIcon({ category }: { category: EquipmentFilter }) {
+  const Icon =
+    category === "tractor"
+      ? Tractor
+      : category === "trailer"
+        ? Truck
+        : category === "tool"
+          ? Wrench
+          : category === "selfpropelled"
+            ? Wheat
+            : LayoutGrid
+  return <Icon className="icon" aria-hidden="true" />
 }
 
 function onIconError(event: SyntheticEvent<HTMLImageElement>) {
@@ -208,10 +223,13 @@ export function VehiclesPage() {
               type="button"
               role="tab"
               aria-selected={filter === item.id}
+              aria-label={item.label}
+              title={item.label}
               className={filter === item.id ? "access-tab active" : "access-tab"}
               onClick={() => setFilter(item.id)}
             >
-              {item.label}
+              <CategoryIcon category={item.id} />
+              <span className="sr-only">{item.label}</span>
             </button>
           ))}
         </nav>
@@ -243,9 +261,12 @@ export function VehiclesPage() {
               vehicle.hours === null
                 ? null
                 : `${vehicle.hours.toLocaleString(i18n.language, { maximumFractionDigits: 0 })} h`
-            const modName = modDisplayName(vehicle.modKey)
             const title = vehicleDisplayName(vehicle.name)
             const brand = vehicleBrand(vehicle)
+            const position =
+              vehicle.x === null || vehicle.z === null
+                ? null
+                : `${vehicle.x.toFixed(0)} / ${vehicle.z.toFixed(0)}`
 
             return (
               <button
@@ -259,26 +280,39 @@ export function VehiclesPage() {
                     <img src={vehicle.iconUrl} alt="" onError={onIconError} />
                   ) : null}
                   <Tractor className={`icon icon-fallback${vehicle.iconUrl ? " is-hidden" : ""}`} />
-                  <span className="equip-card-cat">{t(categoryLabelKey(vehicle.category))}</span>
+                  <span className="equip-card-cat" title={t(categoryLabelKey(vehicle.category))}>
+                    <CategoryIcon
+                      category={vehicle.category === "harvester" ? "selfpropelled" : vehicle.category}
+                    />
+                  </span>
                   <span className="equip-card-caption">
                     {brand ? <span className="equip-card-brand">{brand}</span> : null}
                     <strong className="equip-card-title">{title}</strong>
                   </span>
                 </span>
                 <span className="equip-card-body">
+                  <VehicleGauges vehicle={vehicle} language={i18n.language} label={(key) => t(key)} />
                   <span className="equip-card-facts">
+                    <span>
+                      <em>{t("vehicles.position")}</em>
+                      <strong>{position ?? t("unavailable")}</strong>
+                    </span>
+                    {vehicle.plate ? (
+                      <span>
+                        <em>{t("vehicles.plate")}</em>
+                        <strong>{vehicle.plate}</strong>
+                      </span>
+                    ) : null}
                     <span>
                       <em>{t("vehicles.hours")}</em>
                       <strong>{hours ?? t("unavailable")}</strong>
                     </span>
-                    <span>
-                      <em>{t("vehicles.farm")}</em>
-                      <strong>{farmName ?? t("unavailable")}</strong>
-                    </span>
-                    <span>
-                      <em>{t("vehicles.modTitle")}</em>
-                      <strong>{modName ?? t("vehicles.baseGame")}</strong>
-                    </span>
+                    {farmName ? (
+                      <span>
+                        <em>{t("vehicles.farm")}</em>
+                        <strong>{farmName}</strong>
+                      </span>
+                    ) : null}
                   </span>
                 </span>
               </button>

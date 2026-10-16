@@ -238,6 +238,12 @@ final class WorkspaceFeedService
                     'x' => $vehicle['x'] ?? null,
                     'y' => $vehicle['y'] ?? null,
                     'z' => $vehicle['z'] ?? null,
+                    'fuel' => self::nullableNumber($vehicle['fuel'] ?? null),
+                    'fuelCapacity' => self::nullableNumber($vehicle['fuelCapacity'] ?? null),
+                    'defLevel' => self::nullableNumber($vehicle['defLevel'] ?? null),
+                    'defCapacity' => self::nullableNumber($vehicle['defCapacity'] ?? null),
+                    'wear' => self::nullableNumber($vehicle['wear'] ?? null),
+                    'plate' => isset($vehicle['plate']) && is_string($vehicle['plate']) && $vehicle['plate'] !== '' ? $vehicle['plate'] : null,
                     'fill' => null,
                     'hours' => $vehicle['hours'] ?? null,
                     'observedAt' => $snapshot->fetchedAtUtc,
@@ -378,6 +384,15 @@ final class WorkspaceFeedService
     private function serializeFarms(Workspace $workspace): array
     {
         return GameFarms::serialize($workspace);
+    }
+
+    private static function nullableNumber(mixed $value): ?float
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        return (float) $value;
     }
 
     private static function mapVehicleCategory(?string $category, ?string $type): string

@@ -163,6 +163,16 @@ export interface Vehicle {
   x: number | null
   y: number | null
   z: number | null
+  /** Current fuel (diesel, electric, or methane), summed across tanks. */
+  fuel?: number | null
+  fuelCapacity?: number | null
+  /** AdBlue / DEF, only when the vehicle has that tank. */
+  defLevel?: number | null
+  defCapacity?: number | null
+  /** Wear / damage, 0–100. */
+  wear?: number | null
+  /** License plate, when the vehicle has one. */
+  plate?: string | null
   fill: LocalizedText | null
   hours: number | null
   observedAt: string

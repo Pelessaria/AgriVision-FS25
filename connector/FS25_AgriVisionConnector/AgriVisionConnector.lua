@@ -12,7 +12,7 @@
 
 AgriVisionConnector = {}
 AgriVisionConnector.MOD_NAME = "FS25_AgriVisionConnector"
-AgriVisionConnector.VERSION = "0.1.2.9"
+AgriVisionConnector.VERSION = "0.1.2.10"
 AgriVisionConnector.SCHEMA = "1"
 AgriVisionConnector.TICK_MS = 5000
 AgriVisionConnector.HELLO_EVERY_MS = 60000
@@ -257,6 +257,9 @@ function AgriVisionConnector:collectVehiclesFullXml()
             local modKey = self:modKeyFromFilename(filename)
             local storeKey = self:storeKeyFromFilename(filename)
             local brand = self:vehicleBrand(vehicle, filename)
+            local fuel, fuelCapacity, defLevel, defCapacity = self:vehicleFluids(vehicle)
+            local wear = self:vehicleWear(vehicle)
+            local plate = self:vehiclePlate(vehicle)
             local imageSrc = self:vehicleStoreImage(vehicle, filename)
             if storeKey ~= nil and imageSrc ~= nil and self.pendingStoreIcons[storeKey] == nil then
                 self.pendingStoreIcons[storeKey] = {
@@ -295,6 +298,22 @@ function AgriVisionConnector:collectVehiclesFullXml()
             if brand ~= nil and brand ~= "" then
                 table.insert(attrs, string.format('brand="%s"', self:xmlEscape(brand)))
                 table.insert(identity, "b=" .. tostring(brand))
+            end
+            if fuel ~= nil and fuelCapacity ~= nil and fuelCapacity > 0 then
+                table.insert(attrs, string.format('fuel="%.0f" fuelCapacity="%.0f"', fuel, fuelCapacity))
+                table.insert(identity, "fu=" .. tostring(math.floor(fuel + 0.5)))
+            end
+            if defLevel ~= nil and defCapacity ~= nil and defCapacity > 0 then
+                table.insert(attrs, string.format('defLevel="%.0f" defCapacity="%.0f"', defLevel, defCapacity))
+                table.insert(identity, "df=" .. tostring(math.floor(defLevel + 0.5)))
+            end
+            if wear ~= nil then
+                table.insert(attrs, string.format('wear="%d"', wear))
+                table.insert(identity, "w=" .. tostring(wear))
+            end
+            if plate ~= nil and plate ~= "" then
+                table.insert(attrs, string.format('plate="%s"', self:xmlEscape(plate)))
+                table.insert(identity, "p=" .. tostring(plate))
             end
             if operatingTime ~= nil then
                 table.insert(attrs, string.format('operatingTime="%.2f"', operatingTime))
@@ -555,6 +574,146 @@ function AgriVisionConnector:tryCopyStoreIcon(storeKey, rawSrc)
         end
     end
     return false, nil, nil
+end
+
+function AgriVisionConnector:finiteNumber(value)
+    return type(value) == "number" and value == value and value ~= math.huge and value ~= -math.huge
+end
+
+--- Diesel / electric / methane summed as fuel. DEF only when a real tank exists.
+function AgriVisionConnector:vehicleFluids(vehicle)
+    if vehicle == nil or vehicle.getFillUnitCount == nil or vehicle.getFillUnitFillLevel == nil then
+        return nil, nil, nil, nil
+    end
+    local okCount, count = pcall(function()
+        return vehicle:getFillUnitCount()
+    end)
+    if not okCount or type(count) ~= "number" or count < 1 then
+        return nil, nil, nil, nil
+    end
+    local fuel, fuelCapacity, defLevel, defCapacity = nil, nil, nil, nil
+    local fuelNames = { DIESEL = true, ELECTRICCHARGE = true, METHANE = true }
+    for index = 1, count do
+        local typeName = nil
+        if vehicle.getFillUnitFillType ~= nil and g_fillTypeManager ~= nil and g_fillTypeManager.getFillTypeNameByIndex ~= nil then
+            local okType, fillType = pcall(function()
+                return vehicle:getFillUnitFillType(index)
+            end)
+            if okType and fillType ~= nil then
+                local okName, name = pcall(function()
+                    return g_fillTypeManager:getFillTypeNameByIndex(fillType)
+                end)
+                if okName and type(name) == "string" then
+                    typeName = string.upper(name)
+                end
+            end
+        end
+        local level, capacity = nil, nil
+        local okLevel, rawLevel = pcall(function()
+            return vehicle:getFillUnitFillLevel(index)
+        end)
+        if okLevel and self:finiteNumber(rawLevel) then
+            level = rawLevel
+        end
+        if vehicle.getFillUnitCapacity ~= nil then
+            local okCap, rawCap = pcall(function()
+                return vehicle:getFillUnitCapacity(index)
+            end)
+            if okCap and self:finiteNumber(rawCap) then
+                capacity = rawCap
+            end
+        end
+        if typeName ~= nil and capacity ~= nil and capacity > 1 and level ~= nil then
+            if typeName == "DEF" or typeName == "ADBLUE" then
+                defLevel = (defLevel or 0) + level
+                defCapacity = (defCapacity or 0) + capacity
+            elseif fuelNames[typeName] then
+                fuel = (fuel or 0) + level
+                fuelCapacity = (fuelCapacity or 0) + capacity
+            end
+        end
+    end
+    return fuel, fuelCapacity, defLevel, defCapacity
+end
+
+--- Damage as percent 0–100. Nil when the vehicle has no wearable spec.
+function AgriVisionConnector:vehicleWear(vehicle)
+    if vehicle == nil then
+        return nil
+    end
+    local damage = nil
+    if vehicle.getDamageAmount ~= nil then
+        local ok, value = pcall(function()
+            return vehicle:getDamageAmount()
+        end)
+        if ok and self:finiteNumber(value) then
+            damage = value
+        end
+    end
+    if damage == nil and vehicle.spec_wearable ~= nil and self:finiteNumber(vehicle.spec_wearable.damage) then
+        damage = vehicle.spec_wearable.damage
+    end
+    if damage == nil then
+        return nil
+    end
+    if damage < 0 then
+        damage = 0
+    elseif damage > 1 then
+        damage = 1
+    end
+    return math.floor(damage * 100 + 0.5)
+end
+
+function AgriVisionConnector:vehiclePlate(vehicle)
+    if vehicle == nil then
+        return nil
+    end
+    if vehicle.getLicensePlateText ~= nil then
+        local ok, text = pcall(function()
+            return vehicle:getLicensePlateText()
+        end)
+        if ok and type(text) == "string" then
+            text = text:gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+            if text ~= "" then
+                return text
+            end
+        end
+    end
+    local spec = vehicle.spec_licensePlates
+    if spec == nil then
+        return nil
+    end
+    if type(spec.licensePlateText) == "string" and spec.licensePlateText ~= "" then
+        return spec.licensePlateText
+    end
+    local plates = spec.licensePlates or spec.plates
+    if type(plates) ~= "table" then
+        return nil
+    end
+    for _, plate in pairs(plates) do
+        if type(plate) == "table" then
+            if type(plate.charactersText) == "string" and plate.charactersText ~= "" then
+                return plate.charactersText
+            end
+            if type(plate.characters) == "string" and plate.characters ~= "" then
+                return plate.characters
+            end
+            if type(plate.characters) == "table" then
+                local chars = {}
+                for _, entry in ipairs(plate.characters) do
+                    if type(entry) == "string" and entry ~= "" then
+                        table.insert(chars, entry)
+                    elseif type(entry) == "table" and type(entry.character) == "string" then
+                        table.insert(chars, entry.character)
+                    end
+                end
+                if #chars > 0 then
+                    return table.concat(chars)
+                end
+            end
+        end
+    end
+    return nil
 end
 
 function AgriVisionConnector:vehicleBrand(vehicle, filename)

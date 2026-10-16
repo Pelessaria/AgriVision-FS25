@@ -56,6 +56,8 @@ final class VehiclesXmlParser
                 'x' => $x,
                 'y' => $y,
                 'z' => $z,
+                'wear' => self::wearFromNode($node),
+                'plate' => self::plateFromNode($node),
             ];
         }
 
@@ -104,6 +106,14 @@ final class VehiclesXmlParser
                 $operatingTime = (float) $m[1];
             }
             [$x, $y, $z] = self::positionFromInnerXml($inner);
+            $wear = null;
+            if (preg_match('/<wearable\b[^>]*\bdamage="([^"]+)"/i', $inner, $m) && is_numeric($m[1])) {
+                $wear = (int) max(0, min(100, round(((float) $m[1]) * 100)));
+            }
+            $plate = null;
+            if (preg_match('/<licensePlate\b[^>]*\bcharacters="([^"]*)"/i', $inner, $m)) {
+                $plate = trim(html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8')) ?: null;
+            }
             $vehicles[] = [
                 'uniqueId' => $uniqueId,
                 'farmId' => $farmId,
@@ -113,6 +123,8 @@ final class VehiclesXmlParser
                 'x' => $x,
                 'y' => $y,
                 'z' => $z,
+                'wear' => $wear,
+                'plate' => $plate,
             ];
         }
 
@@ -165,6 +177,35 @@ final class VehiclesXmlParser
         }
 
         return [(float) $parts[0], (float) $parts[1], (float) $parts[2]];
+    }
+
+    private static function wearFromNode(\SimpleXMLElement $node): ?int
+    {
+        $nodes = $node->xpath('./wearable');
+        if (! is_array($nodes) || $nodes === []) {
+            return null;
+        }
+        $damage = self::floatAttr($nodes[0]->attributes(), 'damage');
+        if ($damage === null) {
+            return null;
+        }
+
+        return (int) max(0, min(100, round($damage * 100)));
+    }
+
+    private static function plateFromNode(\SimpleXMLElement $node): ?string
+    {
+        $direct = self::strAttr($node->attributes(), 'licensePlate');
+        if ($direct !== null) {
+            return $direct;
+        }
+        $nodes = $node->xpath('./licensePlate');
+        if (! is_array($nodes) || $nodes === []) {
+            return null;
+        }
+        $attrs = $nodes[0]->attributes();
+
+        return self::strAttr($attrs, 'characters') ?? self::strAttr($attrs, 'text');
     }
 
     public static function nameHintFromFilename(?string $filename): ?string

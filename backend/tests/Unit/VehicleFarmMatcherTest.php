@@ -124,4 +124,31 @@ class VehicleFarmMatcherTest extends TestCase
         $this->assertSame('k1', $parsed[0]['modKey']);
         $this->assertSame('Tool', $parsed[0]['name']);
     }
+
+    public function test_parses_connector_fluids_wear_and_plate(): void
+    {
+        $xml = '<vehiclesFull><vehicle uniqueId="u1" fuel="660" fuelCapacity="740" defLevel="18" defCapacity="40" wear="10" plate="EF NW 1" /></vehiclesFull>';
+        $parsed = ConnectorVehiclesParser::parse($xml);
+        $this->assertSame(660.0, $parsed[0]['fuel']);
+        $this->assertSame(740.0, $parsed[0]['fuelCapacity']);
+        $this->assertSame(18.0, $parsed[0]['defLevel']);
+        $this->assertSame(40.0, $parsed[0]['defCapacity']);
+        $this->assertSame(10, $parsed[0]['wear']);
+        $this->assertSame('EF NW 1', $parsed[0]['plate']);
+    }
+
+    public function test_parses_savegame_wear_and_plate(): void
+    {
+        $xml = <<<'XML'
+        <vehicles>
+          <vehicle filename="data/vehicles/fendt/fendt728.xml" uniqueId="v1" farmId="1">
+            <wearable damage="0.12" />
+            <licensePlate characters="EF NW 701" />
+          </vehicle>
+        </vehicles>
+        XML;
+        $parsed = VehiclesXmlParser::parse($xml);
+        $this->assertSame(12, $parsed[0]['wear']);
+        $this->assertSame('EF NW 701', $parsed[0]['plate']);
+    }
 }

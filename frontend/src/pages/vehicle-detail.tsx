@@ -2,6 +2,7 @@ import { type SyntheticEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { Link, useParams } from "react-router-dom"
 import { Package, Tractor } from "lucide-react"
+import { VehicleGauges } from "../components/equip-gauge"
 import { EmptyState, MissingValue, MissingWorkspace, PermissionBlock, useTimeLabel } from "../components/ui"
 import { farmDisplayName } from "../farm-label"
 import { useStore } from "../store"
@@ -93,6 +94,8 @@ export function VehicleDetailPage() {
           </div>
         </div>
 
+        <VehicleGauges vehicle={vehicle} language={i18n.language} label={(key) => t(key)} />
+
         <dl className="equip-sheet-facts">
           <div>
             <dt>{t("vehicles.brand")}</dt>
@@ -114,6 +117,12 @@ export function VehicleDetailPage() {
               <MissingValue text={positionOf(vehicle)} />
             </dd>
           </div>
+          {vehicle.plate ? (
+            <div>
+              <dt>{t("vehicles.plate")}</dt>
+              <dd>{vehicle.plate}</dd>
+            </div>
+          ) : null}
           {fill ? (
             <div>
               <dt>{t("vehicles.fill")}</dt>

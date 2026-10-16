@@ -73,6 +73,12 @@ final class VehicleFarmMatcher
                 'storeKey' => $meta['storeKey'] ?? StoreKey::fromFilename(is_string($filename) ? $filename : null),
                 'modKey' => $meta['modKey'] ?? null,
                 'brand' => isset($meta['brand']) && is_string($meta['brand']) && $meta['brand'] !== '' ? $meta['brand'] : null,
+                'fuel' => self::nullableNumber($meta['fuel'] ?? null),
+                'fuelCapacity' => self::nullableNumber($meta['fuelCapacity'] ?? null),
+                'defLevel' => self::nullableNumber($meta['defLevel'] ?? null),
+                'defCapacity' => self::nullableNumber($meta['defCapacity'] ?? null),
+                'wear' => self::nullableNumber($meta['wear'] ?? null),
+                'plate' => isset($meta['plate']) && is_string($meta['plate']) && $meta['plate'] !== '' ? $meta['plate'] : null,
             ];
         }
 
@@ -117,6 +123,12 @@ final class VehicleFarmMatcher
                 'storeKey' => null,
                 'modKey' => null,
                 'brand' => null,
+                'fuel' => null,
+                'fuelCapacity' => null,
+                'defLevel' => null,
+                'defCapacity' => null,
+                'wear' => null,
+                'plate' => null,
             ];
         }
 
@@ -199,6 +211,15 @@ final class VehicleFarmMatcher
         }
 
         return 14.0 * $hits;
+    }
+
+    private static function nullableNumber(mixed $value): ?float
+    {
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        return (float) $value;
     }
 
     private static function normalizeName(?string $value): string
