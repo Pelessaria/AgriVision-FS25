@@ -189,8 +189,10 @@ function normalizeVehicle(vehicle: Vehicle): Vehicle {
   return {
     ...vehicle,
     iconUrl: vehicle.iconUrl ?? null,
+    modIconUrl: vehicle.modIconUrl ?? null,
     storeKey: vehicle.storeKey ?? null,
     modKey: vehicle.modKey ?? null,
+    filename: vehicle.filename ?? null,
   }
 }
 

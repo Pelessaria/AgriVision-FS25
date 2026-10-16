@@ -458,23 +458,176 @@ h1, h2, h3, p { margin: 0; }
   flex-wrap: wrap;
   row-gap: 0;
 }
-.equip-icon-col { width: 48px; }
-.equip-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 10px;
+.equip-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+}
+.equip-card {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  width: 100%;
+  margin: 0;
+  padding: 14px;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  background: var(--surface);
   border: 1px solid var(--line);
-  background: var(--surface-2);
-  display: inline-grid;
+  border-radius: 14px;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.equip-card:hover {
+  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--surface) 92%, var(--accent));
+}
+.equip-card:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 2px;
+}
+.equip-card-icon,
+.equip-detail-icon,
+.equip-mod-icon {
+  display: grid;
   place-items: center;
-  color: var(--text-faint);
   overflow: hidden;
   flex: none;
+  color: var(--text-faint);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
 }
-.equip-icon img { width: 100%; height: 100%; object-fit: cover; }
-.equip-icon .icon { width: 16px; height: 16px; }
-.equip-icon .icon-fallback.is-hidden { display: none; }
-.vehicle-card .equip-icon { margin-bottom: 8px; }
+.equip-card-icon {
+  width: 112px;
+  height: 112px;
+  border-radius: 12px;
+}
+.equip-card-icon img,
+.equip-detail-icon img,
+.equip-mod-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #121512;
+}
+.equip-card-icon .icon { width: 28px; height: 28px; }
+.equip-card-icon .icon-fallback.is-hidden,
+.equip-detail-icon .icon-fallback.is-hidden,
+.equip-mod-icon .icon-fallback.is-hidden { display: none; }
+.equip-card-body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  align-content: start;
+}
+.equip-card-title {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.equip-card-cat {
+  font-size: var(--small);
+  color: var(--text-muted);
+}
+.equip-card-meta {
+  display: grid;
+  gap: 4px;
+  margin: 4px 0 0;
+}
+.equip-card-meta > div {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+.equip-card-meta dt {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.equip-card-meta dd {
+  margin: 0;
+  font-size: var(--small);
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.equip-card-mod {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  font-size: var(--small);
+  color: var(--text-muted);
+  min-width: 0;
+}
+.equip-card-mod .icon { width: 13px; height: 13px; flex: none; }
+.equip-card-stamp { font-size: 0.7rem; }
+
+.equip-detail { display: grid; gap: 18px; }
+.equip-detail-hero {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  padding: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.equip-detail-icon {
+  width: 168px;
+  height: 168px;
+  border-radius: 14px;
+}
+.equip-detail-icon .icon { width: 40px; height: 40px; }
+.equip-detail-head { min-width: 0; }
+.equip-detail-head h1 { margin: 4px 0 6px; }
+.equip-detail-cat { margin: 0; color: var(--text-muted); }
+.equip-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.equip-detail-panel {
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.equip-detail-panel h2 {
+  margin: 0 0 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.equip-mod-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.equip-mod-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 12px;
+}
+.equip-mod-icon .icon { width: 22px; height: 22px; }
+.equip-mod-meta { margin: 0; }
+.equip-mod-path {
+  margin: 12px 0 0;
+  font-size: 0.72rem;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
 .ws-dash { display: grid; gap: 16px; }
 .ws-feed-vehicles { margin: 0; }
 .ws-dash-meta {
@@ -1829,16 +1982,6 @@ th { color: var(--text-faint); font-size: var(--small); font-weight: 600; }
 th { color: var(--text-faint); font-size: 0.75rem; font-weight: 500; }
 tr:hover td { background: rgba(255, 255, 255, 0.02); }
 tbody tr { cursor: pointer; }
-.mobile-list { display: none; gap: 10px; }
-.vehicle-card {
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  padding: 12px;
-  display: grid;
-  gap: 6px;
-  background: var(--bg-raised);
-}
-button.vehicle-card { width: 100%; text-align: left; cursor: pointer; color: inherit; }
 .chip .icon { width: 14px; height: 14px; }
 .user-list { display: grid; gap: 12px; margin-top: 14px; }
 .people {
@@ -2171,7 +2314,7 @@ button.vehicle-card { width: 100%; text-align: left; cursor: pointer; color: inh
 }
 @keyframes shine { 0% { background-position: 100% 0; } 100% { background-position: 0 0; } }
 
-h1, h2, .code, .vehicle-card, .user-card { overflow-wrap: anywhere; }
+h1, h2, .code, .equip-card, .user-card { overflow-wrap: anywhere; }
 .code {
   font-size: 1.4rem;
   letter-spacing: 0.08em;
@@ -2306,7 +2449,18 @@ h1, h2, .code, .vehicle-card, .user-card { overflow-wrap: anywhere; }
   .cards { grid-template-columns: 1fr; }
   .card-metrics { grid-template-columns: 1fr; }
   .table-wrap { display: none; }
-  .mobile-list { display: grid; }
+  .equip-card {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 12px;
+    padding: 12px;
+  }
+  .equip-card-icon { width: 88px; height: 88px; }
+  .equip-detail-hero {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+  .equip-detail-icon { width: 140px; height: 140px; }
+  .equip-detail-grid { grid-template-columns: 1fr; }
   .code { letter-spacing: 0.04em; font-size: 1.05rem; }
   .content { width: 100%; margin-inline: 0; padding: 16px 14px 40px; }
   .header, .context { padding-left: 14px; padding-right: 14px; }

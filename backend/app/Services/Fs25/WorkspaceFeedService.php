@@ -210,6 +210,12 @@ final class WorkspaceFeedService
                         || $iconCache->localDdsPath($workspace, $storeKey) !== null)) {
                     $iconUrl = $iconCache->publicUrl($workspace, $storeKey);
                 }
+                $modIconUrl = null;
+                if (is_string($modKey) && $modKey !== ''
+                    && ($iconCache->localPath($workspace, $modKey) !== null
+                        || $iconCache->localDdsPath($workspace, $modKey) !== null)) {
+                    $modIconUrl = $iconCache->publicUrl($workspace, $modKey);
+                }
                 $vehicles[] = [
                     'id' => $unique
                         ? 'feed-'.$workspace->public_id.'-'.$unique
@@ -220,7 +226,9 @@ final class WorkspaceFeedService
                     'farmId' => $vehicle['farmId'] ?? null,
                     'storeKey' => $storeKey,
                     'modKey' => $modKey,
+                    'filename' => is_string($filename) && $filename !== '' ? $filename : null,
                     'iconUrl' => $iconUrl,
+                    'modIconUrl' => $modIconUrl,
                     'x' => $vehicle['x'] ?? null,
                     'y' => $vehicle['y'] ?? null,
                     'z' => $vehicle['z'] ?? null,

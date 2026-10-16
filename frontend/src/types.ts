@@ -150,10 +150,14 @@ export interface Vehicle {
   farmId: number | null
   /** Resolved store-icon URL when locally cached; null = placeholder. */
   iconUrl: string | null
+  /** Mod-pack icon URL when locally cached. */
+  modIconUrl?: string | null
   /** Vehicle type key for store icons (from connector / filename). */
   storeKey?: string | null
-  /** Mod pack key — reserved for mod-list UI later, not vehicle overview. */
+  /** Mod pack folder / zip stem (e.g. FS25_AutoDrive). */
   modKey?: string | null
+  /** Original vehicle XML path from savegame / connector. */
+  filename?: string | null
   x: number | null
   y: number | null
   z: number | null
