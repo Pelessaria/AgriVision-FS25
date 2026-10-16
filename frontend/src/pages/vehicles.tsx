@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type SyntheticEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { useNavigate } from "react-router-dom"
-import { Boxes, LayoutGrid, LoaderCircle, RefreshCw, Tractor, Truck, Wheat, Wrench } from "lucide-react"
+import { Boxes, Clock, LayoutGrid, LoaderCircle, MapPin, RefreshCw, Tractor, Truck, Wheat, Wrench } from "lucide-react"
 import { apiWorkspaceSyncIcons, apiWorkspaceVehicles } from "../api"
 import { EmptyState, MissingWorkspace, PermissionBlock } from "../components/ui"
 import { farmDisplayName } from "../farm-label"
@@ -55,7 +55,6 @@ export function VehiclesPage() {
     liveMode,
     moduleAccess,
     selectedFarm,
-    farmByGameId,
     replaceWorkspaceFarms,
     replaceWorkspaceVehicles,
     upsertWorkspace,
@@ -255,12 +254,12 @@ export function VehiclesPage() {
       ) : (
         <div className="equip-grid">
           {rows.map((vehicle) => {
-            const linked = farmByGameId(id, vehicle.farmId)
-            const farmName = linked
-              ? farmDisplayName(linked, t)
-              : vehicle.farmId === null
-                ? null
-                : t("vehicles.farmId", { id: vehicle.farmId })
+            const category =
+              isPallet(vehicle)
+                ? "pallet"
+                : vehicle.category === "harvester"
+                  ? "selfpropelled"
+                  : vehicle.category
             const hours =
               vehicle.hours === null
                 ? null
@@ -284,16 +283,9 @@ export function VehiclesPage() {
                     <img src={vehicle.iconUrl} alt="" onError={onIconError} />
                   ) : null}
                   <Tractor className={`icon icon-fallback${vehicle.iconUrl ? " is-hidden" : ""}`} />
-                  <span className="equip-card-cat" title={t(categoryLabelKey(isPallet(vehicle) ? "pallet" : vehicle.category))}>
-                    <CategoryIcon
-                      category={
-                        isPallet(vehicle)
-                          ? "pallet"
-                          : vehicle.category === "harvester"
-                            ? "selfpropelled"
-                            : vehicle.category
-                      }
-                    />
+                  <span className="equip-card-cat">
+                    <CategoryIcon category={category} />
+                    <span>{t(categoryLabelKey(category === "selfpropelled" ? "harvester" : category))}</span>
                   </span>
                   <span className="equip-card-caption">
                     {brand ? <span className="equip-card-brand">{brand}</span> : null}
@@ -301,11 +293,20 @@ export function VehiclesPage() {
                   </span>
                 </span>
                 <span className="equip-card-body">
-                  <VehicleGauges vehicle={vehicle} language={i18n.language} label={(key) => t(key)} />
                   <span className="equip-card-facts">
                     <span>
-                      <em>{t("vehicles.position")}</em>
+                      <em>
+                        <MapPin className="icon" aria-hidden="true" />
+                        {t("vehicles.position")}
+                      </em>
                       <strong>{position ?? t("unavailable")}</strong>
+                    </span>
+                    <span>
+                      <em>
+                        <Clock className="icon" aria-hidden="true" />
+                        {t("vehicles.hours")}
+                      </em>
+                      <strong>{hours ?? t("unavailable")}</strong>
                     </span>
                     {vehicle.plate ? (
                       <span>
@@ -313,17 +314,8 @@ export function VehiclesPage() {
                         <strong>{vehicle.plate}</strong>
                       </span>
                     ) : null}
-                    <span>
-                      <em>{t("vehicles.hours")}</em>
-                      <strong>{hours ?? t("unavailable")}</strong>
-                    </span>
-                    {farmName ? (
-                      <span>
-                        <em>{t("vehicles.farm")}</em>
-                        <strong>{farmName}</strong>
-                      </span>
-                    ) : null}
                   </span>
+                  <VehicleGauges vehicle={vehicle} language={i18n.language} label={(key) => t(key)} />
                 </span>
               </button>
             )

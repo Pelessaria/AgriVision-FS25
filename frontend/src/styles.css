@@ -564,15 +564,21 @@ h1, h2, h3, p { margin: 0; }
   top: 10px;
   left: 12px;
   z-index: 1;
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: auto;
+  height: auto;
+  padding: 4px 8px 4px 6px;
   border-radius: 8px;
   color: white;
   background: color-mix(in srgb, black 42%, transparent);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
-.equip-card-cat .icon { width: 15px; height: 15px; }
+.equip-card-cat .icon { width: 14px; height: 14px; }
 .equipment-tabs .access-tab { gap: 8px; padding-inline: 12px; }
 .equipment-tabs .icon { width: 16px; height: 16px; }
 .equip-card-caption {
@@ -613,6 +619,11 @@ h1, h2, h3, p { margin: 0; }
   display: flex;
   flex-wrap: wrap;
   gap: 10px 14px;
+}
+.equip-card-body .equip-gauges {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
 .equip-sheet > .equip-gauges { margin: 18px 28px 0; }
 .equip-gauge {
@@ -672,6 +683,9 @@ h1, h2, h3, p { margin: 0; }
   min-width: 0;
 }
 .equip-card-facts em {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-style: normal;
   font-size: 0.66rem;
   font-weight: 600;
@@ -679,6 +693,7 @@ h1, h2, h3, p { margin: 0; }
   text-transform: uppercase;
   color: var(--text-faint);
 }
+.equip-card-facts em .icon { width: 13px; height: 13px; }
 .equip-card-facts strong {
   font-size: 0.92rem;
   font-weight: 600;
