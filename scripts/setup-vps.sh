@@ -778,11 +778,23 @@ fi
 
 write_nginx_config
 
+log "DDS decoder (BC7 store icons)"
+mkdir -p bin
+if command -v gcc >/dev/null 2>&1 && [[ -f tools/dds2rgba/main.c ]]; then
+  gcc -O2 -o bin/dds2rgba tools/dds2rgba/main.c
+  chmod 755 bin/dds2rgba
+elif command -v gcc >/dev/null 2>&1 && [[ -f "${ROOT}/backend/tools/dds2rgba/main.c" ]]; then
+  gcc -O2 -o bin/dds2rgba "${ROOT}/backend/tools/dds2rgba/main.c"
+  chmod 755 bin/dds2rgba
+else
+  log "WARN: gcc fehlt — FS25 BC7-Icons werden nicht zu PNG. apt install build-essential, dann Setup erneut."
+fi
+
 log "Per-instance scheduler cron (${SITE_SLUG})"
 mkdir -p storage/logs storage/framework
 "$PHP_BIN" artisan agrivision:install-schedule
 if id -u "${web_user:-www-data}" >/dev/null 2>&1; then
-  run_root chown -R "${web_user:-www-data}:${web_user:-www-data}" "${BACKEND}/storage" "${BACKEND}/bootstrap/cache" || true
+  run_root chown -R "${web_user:-www-data}:${web_user:-www-data}" "${BACKEND}/storage" "${BACKEND}/bootstrap/cache" bin 2>/dev/null || true
 fi
 
 if [[ -d "${ROOT}/.git" ]] && command -v git >/dev/null 2>&1; then

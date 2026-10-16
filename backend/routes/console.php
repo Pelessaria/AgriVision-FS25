@@ -103,3 +103,31 @@ Artisan::command('agrivision:schedule-status', function () {
 
     return $status['active'] ? 0 : 1;
 })->purpose('Report whether this install\'s scheduler cron is installed and running');
+
+Artisan::command('agrivision:icon-status', function () {
+    $cache = new \App\Services\Fs25\ModIconCacheService;
+    $bin = is_file(base_path('bin/dds2rgba')) && is_executable(base_path('bin/dds2rgba')) ? 'yes' : 'no';
+    $this->line('dds2rgba='.$bin);
+    foreach (Workspace::query()->cursor() as $workspace) {
+        $dir = $cache->cacheDir($workspace);
+        $state = storage_path('app/connector/'.$workspace->public_id.'/state');
+        $png = is_dir($dir) ? count(glob($dir.'/*.png') ?: []) : 0;
+        $dds = is_dir($dir) ? count(glob($dir.'/*.dds') ?: []) : 0;
+        $manifest = is_file($state.'/icons_manifest.xml')
+            ? substr_count((string) file_get_contents($state.'/icons_manifest.xml'), '<store ')
+            : 0;
+        $vehicles = is_file($state.'/vehicles_full.xml')
+            ? substr_count((string) file_get_contents($state.'/vehicles_full.xml'), '<vehicle ')
+            : 0;
+        $this->line(sprintf(
+            '%s manifest=%d vehicles=%d png=%d dds=%d',
+            $workspace->public_id,
+            $manifest,
+            $vehicles,
+            $png,
+            $dds
+        ));
+    }
+
+    return 0;
+})->purpose('Show local connector icon cache counts per workspace');

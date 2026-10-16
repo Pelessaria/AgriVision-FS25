@@ -203,9 +203,11 @@ final class WorkspaceFeedService
                 $filename = $vehicle['filename'] ?? null;
                 $storeKey = $vehicle['storeKey'] ?? StoreKey::fromFilename(is_string($filename) ? $filename : null);
                 $modKey = $vehicle['modKey'] ?? ModKey::fromFilename(is_string($filename) ? $filename : null);
-                // Browser-ready cache only — never set iconUrl for DDS-only (convert may fail).
+                // PNG preferred; DDS still gets a URL — connectorIcon converts on first request.
                 $iconUrl = null;
-                if (is_string($storeKey) && $storeKey !== '' && $iconCache->localPath($workspace, $storeKey) !== null) {
+                if (is_string($storeKey) && $storeKey !== ''
+                    && ($iconCache->localPath($workspace, $storeKey) !== null
+                        || $iconCache->localDdsPath($workspace, $storeKey) !== null)) {
                     $iconUrl = $iconCache->publicUrl($workspace, $storeKey);
                 }
                 $vehicles[] = [

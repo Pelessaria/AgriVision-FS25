@@ -25,8 +25,8 @@ final class DdsToPng
 
         $rgba = null;
         if ($fourCc === 'DX10') {
-            // FS25 store icons are DX10/BC3: 128-byte DDS header + 20-byte DX10 header.
-            // 512² BC3 is exactly 262144 bytes, file size 262292.
+            // FS25 store icons: 128-byte DDS header + 20-byte DX10 header.
+            // Newer packs use BC7 (dxgi 98/99); older ones BC3 (77/78).
             if (strlen($ddsBytes) < 148) {
                 return null;
             }
@@ -37,6 +37,7 @@ final class DdsToPng
                 74, 75 => self::decodeDxt3($data, $width, $height),
                 77, 78 => self::decodeDxt5($data, $width, $height),
                 87, 91 => self::decodeBgra($data, $width, $height),
+                98, 99 => self::decodeViaExternalTool($ddsBytes),
                 default => null,
             };
         } else {
@@ -87,7 +88,11 @@ final class DdsToPng
             if (in_array($dxgi, [87, 91], true)) {
                 return strlen($ddsBytes) >= $offset + ($width * $height * 4);
             }
+            // BC7 (98/99) and BC2/BC3 use 16-byte blocks; BC1 uses 8.
             $block = in_array($dxgi, [71, 72], true) ? 8 : 16;
+            if (! in_array($dxgi, [71, 72, 74, 75, 77, 78, 98, 99], true)) {
+                return false;
+            }
         } elseif (($pfFlags & 0x4) !== 0 && in_array($fourCc, ['DXT1', 'BC1 '], true)) {
             $block = 8;
         } elseif (($pfFlags & 0x4) === 0 && $rgbBitCount === 32) {
@@ -146,6 +151,62 @@ final class DdsToPng
         $png = ob_get_clean();
 
         return is_string($png) && $png !== '' ? $png : null;
+    }
+
+    /**
+     * BC7 needs the bundled dds2rgba helper (pure PHP BC7 is too large for shared hosts
+     * that also lack the binary — VPS installer compiles tools/dds2rgba).
+     */
+    private static function decodeViaExternalTool(string $ddsBytes): ?string
+    {
+        $bin = self::dds2rgbaBinary();
+        if ($bin === null) {
+            return null;
+        }
+
+        $tmp = tempnam(sys_get_temp_dir(), 'avdds');
+        if ($tmp === false) {
+            return null;
+        }
+        $ddsPath = $tmp.'.dds';
+        @unlink($tmp);
+        if (file_put_contents($ddsPath, $ddsBytes) === false) {
+            return null;
+        }
+
+        try {
+            $cmd = escapeshellarg($bin).' '.escapeshellarg($ddsPath);
+            $raw = shell_exec($cmd.' 2>/dev/null');
+            if (! is_string($raw) || strlen($raw) < 8) {
+                return null;
+            }
+            $width = unpack('V', substr($raw, 0, 4))[1] ?? 0;
+            $height = unpack('V', substr($raw, 4, 4))[1] ?? 0;
+            $need = 8 + ($width * $height * 4);
+            if ($width < 1 || $height < 1 || strlen($raw) < $need) {
+                return null;
+            }
+
+            return substr($raw, 8, $width * $height * 4);
+        } finally {
+            @unlink($ddsPath);
+        }
+    }
+
+    private static function dds2rgbaBinary(): ?string
+    {
+        $candidates = [
+            base_path('bin/dds2rgba'),
+            base_path('tools/dds2rgba/dds2rgba'),
+            dirname(base_path()).'/backend/bin/dds2rgba',
+        ];
+        foreach ($candidates as $path) {
+            if (is_file($path) && is_executable($path)) {
+                return $path;
+            }
+        }
+
+        return null;
     }
 
     /** Uncompressed-filter PNG (RGBA) — no GD required. */
