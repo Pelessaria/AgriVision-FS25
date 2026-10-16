@@ -84,7 +84,8 @@ Composer wird auf dem Webspace nicht ausgeführt.
 - Sessions und Cache liegen in der Datenbank.
 - „Jetzt synchronisieren“ und ein offener Workspace lösen einen begrenzten Dateiabruf aus.
 - Aufräumen alter Payloads läuft höchstens alle paar Stunden, gesteuert durch eine Zeile in der Datenbank, die parallele Requests aussperrt.
-- Wer Cron hat, kann zusätzlich `php artisan schedule:run` jede Minute eintragen. Auf STRATO-Neuverträgen ist das derzeit kein Planungsbestandteil.
+- Auf einem VPS legt `scripts/setup-vps.sh` je Installation eine eigene Datei unter `/etc/cron.d/` an (`schedule:run` jede Minute). Eine weitere Kundeninstallation ist ein weiteres `--target` und überschreibt die erste nicht.
+- Wer auf Shared Hosting Cron hat, kann zusätzlich `php artisan schedule:run` jede Minute eintragen, oder einmal `php artisan agrivision:install-schedule` ausführen. Auf STRATO-Neuverträgen ist Cron derzeit kein Planungsbestandteil; dort zieht der Icon-Abgleich beim nächsten Dashboard-Aufruf nach.
 
 ## 8. Bekannte Grenzen
 

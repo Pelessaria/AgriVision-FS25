@@ -17,7 +17,7 @@ Self-Hosting ist keine Voraussetzung. Wer nur Webspace hat, bleibt bei [SHARED-H
 4. `.env` setzen, Migrationen ausführen (Installer oder `php artisan migrate`).
 5. Updates: Einstellungen → Update oder `php artisan agrivision:update --apply` — siehe [UPDATES.md](UPDATES.md).
 
-Ein Cron-Eintrag für `schedule:run` ist möglich und beschleunigt Aufräumen und Abholen. Die Anwendung bleibt korrekt, wenn der Eintrag fehlt.
+Ein Cron-Eintrag je Installation (`/etc/cron.d/agrivision-<kennung>`) führt `schedule:run` jede Minute aus. Eine zweite Installation auf demselben VPS bekommt ein eigenes Verzeichnis, eine eigene Datenbank und eine eigene Cron-Datei. Fehlt Cron, läuft der Icon-Abgleich weiter beim nächsten Dashboard-Aufruf.
 
 ## 3. Lokale Bridge zum Spiel
 

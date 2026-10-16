@@ -66,4 +66,12 @@ Artisan::command('agrivision:sync-store-icons {--daemon : Keep pulling icons unt
 
 Schedule::command('agrivision:sync-store-icons')
     ->everyFiveMinutes()
-    ->withoutOverlapping(20);
+    ->withoutOverlapping(20)
+    ->appendOutputTo(storage_path('logs/icon-sync.log'));
+
+Artisan::command('agrivision:install-schedule', function () {
+    $result = \App\Services\InstanceSchedule::install();
+    $this->line($result['detail']);
+
+    return $result['ok'] ? 0 : 1;
+})->purpose('Install this directory\'s scheduler cron without touching other installations');

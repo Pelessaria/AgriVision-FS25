@@ -21,6 +21,18 @@ sudo ./setup-vps.sh --target /var/www/agrivision \
 
 NPM Proxy Host: `http://VPS_IP:8080`, SSL + Force SSL für die Domain.
 
+Eine zweite Kundeninstallation auf demselben VPS ist ein zweites Verzeichnis. Datenbank, Nginx-Site und Cron-Datei werden daraus abgeleitet und ersetzen die erste Installation nicht:
+
+```bash
+sudo ./setup-vps.sh --target /var/www/hof-nord \
+  --with-db --with-nginx --behind-proxy --migrate \
+  --db-password 'anderes-geheimnis' \
+  --app-url https://hof-nord.example \
+  --server-name hof-nord.example
+```
+
+Der Scheduler liegt danach in `/etc/cron.d/agrivision-<kennung>` und gilt nur für dieses Verzeichnis.
+
 > Nicht `cdn.jsdelivr.net/.../install.sh` verwenden — dort kann eine veraltete Datei ohne `--with-db` gecacht sein. Kanonisch ist `setup-vps.sh` über raw.githubusercontent.com.
 
 ## Ohne Proxy (direkt)

@@ -32,6 +32,9 @@ DB_PORT="3306"
 DB_NAME="agrivision"
 DB_USER="agrivision"
 DB_PASSWORD=""
+DB_NAME_EXPLICIT=0
+DB_USER_EXPLICIT=0
+LISTEN_PORT_EXPLICIT=0
 DB_CONNECTION="mariadb"
 APP_URL=""
 APP_NAME="AgriVision"
@@ -53,6 +56,8 @@ By default the script installs PHP 8.3+, extensions, curl, unzip, git
 
 Options:
   --target DIR          Install into DIR (default: /var/www/agrivision)
+                        A second customer is a second --target, with its own
+                        database, Nginx site and scheduler cron.
   --skip-download       Use existing tree (git clone already present)
   --skip-packages       Do not apt/dnf install system packages
   --with-db             Install MariaDB and create database + user
@@ -80,6 +85,16 @@ EOF
 
 log() { printf '\n==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+instance_slug() {
+  local base
+  base="$(basename "$1")"
+  base="$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9]/-/g' -e 's/-\+/-/g' -e 's/^-//' -e 's/-$//')"
+  if [[ -z "$base" ]]; then
+    base="agrivision"
+  fi
+  printf '%.40s' "$base"
+}
 
 run_root() {
   if [[ "$(id -u)" -eq 0 ]]; then
@@ -195,7 +210,7 @@ provision_debian() {
   [[ -n "$series" ]] || die "No PHP packages found. On Ubuntu 26.04+ install php-cli/php-fpm from distro repos manually, then re-run with --skip-packages."
 
   log "Using APT PHP series: ${series}"
-  local pkgs=(ca-certificates curl unzip git)
+  local pkgs=(ca-certificates curl unzip git cron)
   if [[ "$series" == "php" ]]; then
     pkgs+=(
       php-cli php-fpm php-mysql php-xml php-mbstring
@@ -235,6 +250,7 @@ provision_debian() {
         break
       fi
     done
+    run_root systemctl enable --now cron 2>/dev/null || true
   fi
 }
 
@@ -243,12 +259,15 @@ provision_rhel() {
   local mgr="dnf"
   command -v dnf >/dev/null 2>&1 || mgr="yum"
 
-  run_root "$mgr" install -y curl unzip git \
+  run_root "$mgr" install -y curl unzip git cronie \
     php php-cli php-fpm php-mysqlnd php-xml php-mbstring \
     php-curl php-zip php-bcmath php-intl php-pdo \
     || die "Package install failed. Install PHP 8.3+ manually, then re-run with --skip-packages."
 
   PHP_BIN="php"
+  if command -v systemctl >/dev/null 2>&1; then
+    run_root systemctl enable --now crond 2>/dev/null || true
+  fi
 
   if [[ "$WITH_DB" -eq 1 ]]; then
     run_root "$mgr" install -y mariadb-server mariadb
@@ -401,13 +420,13 @@ write_nginx_config() {
   local public_dir="${BACKEND}/public"
   local sock
   sock="$(detect_fpm_sock)"
-  local conf="/etc/nginx/sites-available/agrivision"
-  local conf_d="/etc/nginx/conf.d/agrivision.conf"
+  local conf="/etc/nginx/sites-available/agrivision-${SITE_SLUG}"
+  local conf_d="/etc/nginx/conf.d/agrivision-${SITE_SLUG}.conf"
 
-  log "Writing Nginx site config (root ${public_dir}, port ${LISTEN_PORT})"
+  log "Writing Nginx site agrivision-${SITE_SLUG} (root ${public_dir}, port ${LISTEN_PORT})"
 
   local listen_extra=""
-  if [[ "$LISTEN_PORT" == "80" && "$BEHIND_PROXY" -eq 0 ]]; then
+  if [[ "$LISTEN_PORT" == "80" && "$SERVER_NAME" == "_" && "$BEHIND_PROXY" -eq 0 ]]; then
     listen_extra=" default_server"
   fi
 
@@ -465,7 +484,7 @@ NGINX
   if [[ -d /etc/nginx/sites-available ]]; then
     printf '%s\n' "$body" | run_root tee "$conf" >/dev/null
     run_root rm -f /etc/nginx/sites-enabled/default
-    run_root ln -sfn "$conf" /etc/nginx/sites-enabled/agrivision
+    run_root ln -sfn "$conf" "/etc/nginx/sites-enabled/agrivision-${SITE_SLUG}"
   else
     printf '%s\n' "$body" | run_root tee "$conf_d" >/dev/null
   fi
@@ -530,14 +549,14 @@ while [[ $# -gt 0 ]]; do
     --with-db) WITH_DB=1; shift ;;
     --with-nginx) WITH_NGINX=1; shift ;;
     --behind-proxy) BEHIND_PROXY=1; shift ;;
-    --listen-port) LISTEN_PORT="$2"; shift 2 ;;
+    --listen-port) LISTEN_PORT="$2"; LISTEN_PORT_EXPLICIT=1; shift 2 ;;
     --server-name) SERVER_NAME="$2"; shift 2 ;;
     --migrate) MIGRATE=1; shift ;;
     --build-frontend) BUILD_FRONTEND=1; shift ;;
     --db-host) DB_HOST="$2"; shift 2 ;;
     --db-port) DB_PORT="$2"; shift 2 ;;
-    --db-name) DB_NAME="$2"; shift 2 ;;
-    --db-user) DB_USER="$2"; shift 2 ;;
+    --db-name) DB_NAME="$2"; DB_NAME_EXPLICIT=1; shift 2 ;;
+    --db-user) DB_USER="$2"; DB_USER_EXPLICIT=1; shift 2 ;;
     --db-password) DB_PASSWORD="$2"; shift 2 ;;
     --db-connection) DB_CONNECTION="$2"; shift 2 ;;
     --app-url) APP_URL="$2"; shift 2 ;;
@@ -562,6 +581,14 @@ else
 fi
 
 BACKEND="${ROOT}/backend"
+SITE_SLUG="$(instance_slug "$ROOT")"
+
+if [[ "$DB_NAME_EXPLICIT" -eq 0 && "$SITE_SLUG" != "agrivision" ]]; then
+  DB_NAME="agrivision_$(printf '%s' "$SITE_SLUG" | tr '-' '_')"
+fi
+if [[ "$DB_USER_EXPLICIT" -eq 0 && "$SITE_SLUG" != "agrivision" ]]; then
+  DB_USER="$DB_NAME"
+fi
 
 if [[ -z "$APP_URL" ]]; then
   if [[ "$WITH_NGINX" -eq 1 ]]; then
@@ -576,8 +603,13 @@ if [[ "$APP_URL" == https://* ]]; then
   BEHIND_PROXY=1
 fi
 
-if [[ "$BEHIND_PROXY" -eq 1 && "$LISTEN_PORT" == "80" && "$WITH_NGINX" -eq 1 ]]; then
-  LISTEN_PORT="8080"
+if [[ "$BEHIND_PROXY" -eq 1 && "$LISTEN_PORT_EXPLICIT" -eq 0 && "$WITH_NGINX" -eq 1 ]]; then
+  if [[ "$SITE_SLUG" == "agrivision" ]]; then
+    LISTEN_PORT="8080"
+  else
+    port_sum="$(printf '%s' "$SITE_SLUG" | cksum | awk '{print $1}')"
+    LISTEN_PORT="$((8081 + port_sum % 900))"
+  fi
   log "Behind proxy: Nginx will listen on ${LISTEN_PORT} (override with --listen-port)"
 fi
 
@@ -746,6 +778,13 @@ fi
 
 write_nginx_config
 
+log "Per-instance scheduler cron (${SITE_SLUG})"
+mkdir -p storage/logs storage/framework
+"$PHP_BIN" artisan agrivision:install-schedule
+if id -u "${web_user:-www-data}" >/dev/null 2>&1; then
+  run_root chown -R "${web_user:-www-data}:${web_user:-www-data}" "${BACKEND}/storage" "${BACKEND}/bootstrap/cache" || true
+fi
+
 if [[ -d "${ROOT}/.git" ]] && command -v git >/dev/null 2>&1; then
   SHA="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
 else
@@ -775,11 +814,14 @@ EOF
 
 if [[ "$WITH_NGINX" -eq 1 ]]; then
   cat <<EOF
-Nginx:    enabled (site agrivision -> ${BACKEND}/public)
+Nginx:    site agrivision-${SITE_SLUG} -> ${BACKEND}/public
+Listen:   ${LISTEN_PORT}
+Database: ${DB_NAME}
 Open:     ${APP_URL}
 EOF
 else
   cat <<EOF
+Database: ${DB_NAME}
 Quick test without Nginx:
   cd ${BACKEND}
   ${PHP_BIN} artisan serve --host=0.0.0.0 --port=8000
@@ -824,5 +866,9 @@ If in-app Update says Permission denied:
   chmod 640 ${BACKEND}/.env
 
 Repo: https://github.com/${OWNER}/${REPO}
+
+Another customer on this VPS is a separate directory, database and cron file.
+Do not reuse --target. Example:
+  sudo ./setup-vps.sh --target /var/www/hof-nord --with-db --with-nginx --behind-proxy --migrate --db-password 'other-secret' --app-url https://hof-nord.example --server-name hof-nord.example
 --------------------------------------------------
 EOF
