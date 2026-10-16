@@ -71,21 +71,30 @@ export function EquipGauge({
   amount: string
 }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0
-  const radius = 16
-  const circ = 2 * Math.PI * radius
-  const dash = (pct / 100) * circ
+  const radius = 14
 
   return (
     <span className={`equip-gauge is-${tone}`}>
       <span className="equip-gauge-ring">
-        <svg viewBox="0 0 40 40" aria-hidden="true">
+        <svg viewBox="-4 -4 48 48" aria-hidden="true">
           <circle className="equip-gauge-track" cx="20" cy="20" r={radius} />
+          <circle
+            className="equip-gauge-glow"
+            cx="20"
+            cy="20"
+            r={radius}
+            pathLength={100}
+            strokeDasharray={`${pct} 100`}
+            strokeLinecap="round"
+          />
           <circle
             className="equip-gauge-value"
             cx="20"
             cy="20"
             r={radius}
-            strokeDasharray={`${dash} ${circ}`}
+            pathLength={100}
+            strokeDasharray={`${pct} 100`}
+            strokeLinecap="round"
           />
         </svg>
         <span className="equip-gauge-pct">{Math.round(pct)}%</span>

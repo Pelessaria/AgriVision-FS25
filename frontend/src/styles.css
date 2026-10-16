@@ -644,28 +644,27 @@ h1, h2, h3, p { margin: 0; }
   position: relative;
   width: 58px;
   height: 58px;
+  overflow: visible;
 }
 .equip-gauge-ring svg {
   width: 100%;
   height: 100%;
+  overflow: visible;
   transform: rotate(-90deg);
 }
 .equip-gauge-track,
-.equip-gauge-value { fill: none; stroke-width: 3.4; }
-.equip-gauge-track { stroke: color-mix(in srgb, white 16%, transparent); }
-.equip-gauge-value { stroke-linecap: round; }
-.equip-gauge.is-fuel .equip-gauge-value {
-  stroke: #3dff86;
-  filter: drop-shadow(0 0 3px #3dff86);
-}
-.equip-gauge.is-wear .equip-gauge-value {
-  stroke: #ffc14a;
-  filter: drop-shadow(0 0 3px #ffc14a);
-}
-.equip-gauge.is-def .equip-gauge-value {
-  stroke: #4ec4ff;
-  filter: drop-shadow(0 0 3px #4ec4ff);
-}
+.equip-gauge-glow,
+.equip-gauge-value { fill: none; stroke-linecap: round; }
+.equip-gauge-track,
+.equip-gauge-value { stroke-width: 3.2; }
+.equip-gauge-glow { stroke-width: 5.2; opacity: 0.28; }
+.equip-gauge-track { stroke: color-mix(in srgb, white 14%, transparent); }
+.equip-gauge.is-fuel .equip-gauge-value,
+.equip-gauge.is-fuel .equip-gauge-glow { stroke: #3ae06e; }
+.equip-gauge.is-wear .equip-gauge-value,
+.equip-gauge.is-wear .equip-gauge-glow { stroke: #ffb428; }
+.equip-gauge.is-def .equip-gauge-value,
+.equip-gauge.is-def .equip-gauge-glow { stroke: #45c0ff; }
 .equip-gauge-pct {
   position: absolute;
   inset: 0;
