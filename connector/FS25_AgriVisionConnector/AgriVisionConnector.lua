@@ -12,11 +12,13 @@
 
 AgriVisionConnector = {}
 AgriVisionConnector.MOD_NAME = "FS25_AgriVisionConnector"
-AgriVisionConnector.VERSION = "0.1.2.7"
+AgriVisionConnector.VERSION = "0.1.2.8"
 AgriVisionConnector.SCHEMA = "1"
 AgriVisionConnector.TICK_MS = 5000
+AgriVisionConnector.HELLO_EVERY_MS = 60000
 AgriVisionConnector.FULL_VEHICLE_EVERY_MS = 60000
 AgriVisionConnector.WAIT_LOG_EVERY_MS = 30000
+AgriVisionConnector.ICON_RETRY_EVERY_MS = 600000
 
 local function log(msg)
     print(string.format("AgriVisionConnector: %s", tostring(msg)))
@@ -47,9 +49,13 @@ function AgriVisionConnector:init()
     self.generation = 0
     self.tickAccumMs = 0
     self.fullAccumMs = 0
+    self.helloAccumMs = 0
     self.waitLogAccumMs = 0
+    self.iconRetryAccumMs = 0
     self.lastFullVehiclesAt = 0
     self.processedCommands = {}
+    self.lastVehiclesFingerprint = nil
+    self.lastIconsFingerprint = nil
 
     local profile = getUserProfileAppPath()
     self.baseDir = profile .. "modSettings/" .. self.MOD_NAME .. "/"
@@ -59,6 +65,8 @@ function AgriVisionConnector:init()
     self.modIconsDir = self.iconsDir .. "mods/"
     self.pendingStoreIcons = {}
     self.copiedStorePaths = {}
+    self.failedStoreIcons = {}
+    self.loggedStoreIconFails = {}
     -- Vehicles/store icons must wait until the mission has spawned the fleet.
     -- Mod load runs before the savegame — scanning here always yields unique=0.
     self.vehiclesPrimed = false
@@ -192,10 +200,11 @@ end
 
 function AgriVisionConnector:collectVehiclesFullXml()
     local parts = {}
+    local identityParts = {}
     self.pendingStoreIcons = {}
     local vehiclesTable = self:missionVehicles()
     if vehiclesTable == nil then
-        return "    <!-- vehicle list unavailable on this build -->\n"
+        return "    <!-- vehicle list unavailable on this build -->\n", ""
     end
 
     local count = 0
@@ -257,23 +266,30 @@ function AgriVisionConnector:collectVehiclesFullXml()
 
             local x, y, z = self:vehicleWorldPos(vehicle)
             local attrs = {}
+            local identity = {}
             if uniqueId ~= nil then
                 table.insert(attrs, string.format('uniqueId="%s"', self:xmlEscape(uniqueId)))
+                table.insert(identity, "u=" .. tostring(uniqueId))
             end
             if filename ~= "" then
                 table.insert(attrs, string.format('filename="%s"', self:xmlEscape(filename)))
+                table.insert(identity, "f=" .. tostring(filename))
             end
             if farmId ~= nil then
                 table.insert(attrs, string.format('farmId="%s"', self:xmlEscape(farmId)))
+                table.insert(identity, "farm=" .. tostring(farmId))
             end
             if name ~= "" then
                 table.insert(attrs, string.format('name="%s"', self:xmlEscape(name)))
+                table.insert(identity, "n=" .. tostring(name))
             end
             if storeKey ~= nil then
                 table.insert(attrs, string.format('storeKey="%s"', self:xmlEscape(storeKey)))
+                table.insert(identity, "sk=" .. tostring(storeKey))
             end
             if modKey ~= nil then
                 table.insert(attrs, string.format('modKey="%s"', self:xmlEscape(modKey)))
+                table.insert(identity, "mk=" .. tostring(modKey))
             end
             if operatingTime ~= nil then
                 table.insert(attrs, string.format('operatingTime="%.2f"', operatingTime))
@@ -283,37 +299,43 @@ function AgriVisionConnector:collectVehiclesFullXml()
             end
             if #attrs > 0 then
                 table.insert(parts, string.format("  <vehicle %s />\n", table.concat(attrs, " ")))
+                table.insert(identityParts, table.concat(identity, "|"))
                 count = count + 1
             end
         end
     end
 
     if count == 0 then
-        return "    <!-- no vehicles enumerated -->\n"
+        return "    <!-- no vehicles enumerated -->\n", ""
     end
-    return table.concat(parts, "")
+    table.sort(identityParts)
+    return table.concat(parts, ""), table.concat(identityParts, "\n")
 end
 
 function AgriVisionConnector:writeVehiclesFull()
-    local gen = self:nextGeneration()
-    local vehiclesXml = self:collectVehiclesFullXml()
+    local vehiclesXml, fingerprint = self:collectVehiclesFullXml()
     local pendingCount = 0
     for _ in pairs(self.pendingStoreIcons or {}) do
         pendingCount = pendingCount + 1
     end
-    local body = string.format(
-        [[<?xml version="1.0" encoding="utf-8"?>
+    local changed = fingerprint ~= self.lastVehiclesFingerprint
+    if changed then
+        local gen = self:nextGeneration()
+        local body = string.format(
+            [[<?xml version="1.0" encoding="utf-8"?>
 <vehiclesFull schema="%s" generation="%s" writtenAtUtc="%s" kind="full">
 %s</vehiclesFull>
 ]],
-        self.SCHEMA,
-        tostring(gen),
-        self:xmlEscape(utcNow()),
-        vehiclesXml
-    )
-    self:writeTextFile(self.stateDir .. "vehicles_full.xml", body)
-    log(string.format("vehicles_full written storeIconCandidates=%s", tostring(pendingCount)))
-    self:writeStoreIconsManifest()
+            self.SCHEMA,
+            tostring(gen),
+            self:xmlEscape(utcNow()),
+            vehiclesXml
+        )
+        self:writeTextFile(self.stateDir .. "vehicles_full.xml", body)
+        self.lastVehiclesFingerprint = fingerprint
+        log(string.format("vehicles_full written storeIconCandidates=%s", tostring(pendingCount)))
+    end
+    self:writeStoreIconsManifest(changed)
     self.lastFullVehiclesAt = g_time or 0
 end
 
@@ -660,21 +682,21 @@ function AgriVisionConnector:copyIconFile(src, dest)
     if src == nil or dest == nil or src == "" or dest == "" then
         return false
     end
+    if self.copiedStorePaths == nil then
+        self.copiedStorePaths = {}
+    end
     -- Verified this session.
-    if self.copiedStorePaths ~= nil and self.copiedStorePaths[dest] then
+    if self.copiedStorePaths[dest] then
         return true
     end
-    -- Only skip re-copy when Engine can prove dest is non-empty. Without
-    -- getFileSize, fileExists alone keeps 0-byte leftovers from older builds.
-    if getFileSize ~= nil and self:fileLooksPresent(dest) then
-        if self.copiedStorePaths == nil then
-            self.copiedStorePaths = {}
-        end
+    -- Existing dest: keep it. Without getFileSize we must not delete+recopy every
+    -- minute (that filled the log and hammered the disk on dedicated hosts).
+    if self:fileLooksPresent(dest) then
         self.copiedStorePaths[dest] = true
         return true
     end
-    -- Drop leftovers (0-byte PNG stubs, stale failed copies).
-    if self:engineFileExists(dest) then
+    -- Drop empty leftovers when we can measure size.
+    if getFileSize ~= nil and self:engineFileExists(dest) then
         self:deletePath(dest)
     end
     if copyFile == nil then
@@ -698,9 +720,6 @@ function AgriVisionConnector:copyIconFile(src, dest)
         self:deletePath(dest)
         return false
     end
-    if self.copiedStorePaths == nil then
-        self.copiedStorePaths = {}
-    end
     self.copiedStorePaths[dest] = true
     return true
 end
@@ -717,40 +736,78 @@ function AgriVisionConnector:iconExtFromPath(path)
 end
 
 --- Vehicle store icons only (unique types in the current mission). Mod-pack icons are deferred.
-function AgriVisionConnector:writeStoreIconsManifest()
+--- forceWrite: rewrite the manifest even when nothing new was copied (fleet changed).
+function AgriVisionConnector:writeStoreIconsManifest(forceWrite)
     ensureDir(self.storeIconsDir)
-    local gen = self:nextGeneration()
     local rows = {}
     local copiedCount = 0
+    local newlyCopied = 0
     local failedCount = 0
     local pending = self.pendingStoreIcons or {}
     local failSamples = {}
+    local retryFails = (self.iconRetryAccumMs or 0) >= (self.ICON_RETRY_EVERY_MS or 600000)
+    if retryFails then
+        self.iconRetryAccumMs = 0
+        self.failedStoreIcons = {}
+    end
 
     for storeKey, meta in pairs(pending) do
-        local ok, rel, usedSrc = self:tryCopyStoreIcon(storeKey, meta.src)
-        if ok then
-            copiedCount = copiedCount + 1
-            table.insert(
-                rows,
-                string.format(
-                    '  <store key="%s" filename="%s" iconFile="%s" />\n',
-                    self:xmlEscape(storeKey),
-                    self:xmlEscape(meta.filename or ""),
-                    self:xmlEscape(rel)
-                )
-            )
-        else
+        if self.failedStoreIcons ~= nil and self.failedStoreIcons[storeKey] and not retryFails then
             failedCount = failedCount + 1
-            if #failSamples < 5 then
+        else
+            local before = self.copiedStorePaths
+                and self.copiedStorePaths[self.baseDir .. string.format("icons/store/%s.dds", storeKey)]
+            local ok, rel = self:tryCopyStoreIcon(storeKey, meta.src)
+            if ok then
+                copiedCount = copiedCount + 1
+                if not before then
+                    newlyCopied = newlyCopied + 1
+                end
+                if self.failedStoreIcons ~= nil then
+                    self.failedStoreIcons[storeKey] = nil
+                end
                 table.insert(
-                    failSamples,
-                    string.format("%s src=%s", tostring(storeKey), tostring(meta.src))
+                    rows,
+                    string.format(
+                        '  <store key="%s" filename="%s" iconFile="%s" />\n',
+                        self:xmlEscape(storeKey),
+                        self:xmlEscape(meta.filename or ""),
+                        self:xmlEscape(rel)
+                    )
                 )
+            else
+                failedCount = failedCount + 1
+                if self.failedStoreIcons == nil then
+                    self.failedStoreIcons = {}
+                end
+                self.failedStoreIcons[storeKey] = true
+                if self.loggedStoreIconFails == nil then
+                    self.loggedStoreIconFails = {}
+                end
+                if not self.loggedStoreIconFails[storeKey] then
+                    self.loggedStoreIconFails[storeKey] = true
+                    if #failSamples < 5 then
+                        table.insert(
+                            failSamples,
+                            string.format("%s src=%s", tostring(storeKey), tostring(meta.src))
+                        )
+                    end
+                end
             end
         end
     end
 
+    -- Keep previously successful rows that were skipped as known fails this pass.
+    -- Rows only include successes from this loop; failed keys stay omitted.
+
     table.sort(rows)
+    local fingerprint = table.concat(rows, "")
+    local changed = fingerprint ~= self.lastIconsFingerprint
+    if not changed and not forceWrite and newlyCopied == 0 then
+        return
+    end
+
+    local gen = self:nextGeneration()
     local body = string.format(
         [[<?xml version="1.0" encoding="utf-8"?>
 <iconsManifest schema="%s" generation="%s" writtenAtUtc="%s" scan="vehicles" kind="store">
@@ -759,22 +816,23 @@ function AgriVisionConnector:writeStoreIconsManifest()
         self.SCHEMA,
         tostring(gen),
         self:xmlEscape(utcNow()),
-        table.concat(rows, "")
+        fingerprint
     )
     self:writeTextFile(self.stateDir .. "icons_manifest.xml", body)
-    log(
-        string.format(
-            "store icons unique=%s copiedOrPresent=%s failed=%s copyFile=%s fileExists=%s getFileSize=%s",
-            tostring(#rows),
-            tostring(copiedCount),
-            tostring(failedCount),
-            tostring(copyFile ~= nil),
-            tostring(fileExists ~= nil),
-            tostring(getFileSize ~= nil)
+    self.lastIconsFingerprint = fingerprint
+    if changed or newlyCopied > 0 or #failSamples > 0 then
+        log(
+            string.format(
+                "store icons unique=%s copiedOrPresent=%s new=%s failed=%s",
+                tostring(#rows),
+                tostring(copiedCount),
+                tostring(newlyCopied),
+                tostring(failedCount)
+            )
         )
-    )
+    end
     for _, sample in ipairs(failSamples) do
-        log("store icon fail: " .. sample)
+        log("store icon fail (once): " .. sample)
     end
 end
 
@@ -863,10 +921,15 @@ function AgriVisionConnector:tick(dt)
     end
     self.tickAccumMs = 0
     self.fullAccumMs = (self.fullAccumMs or 0) + self.TICK_MS
+    self.helloAccumMs = (self.helloAccumMs or 0) + self.TICK_MS
     self.waitLogAccumMs = (self.waitLogAccumMs or 0) + self.TICK_MS
+    self.iconRetryAccumMs = (self.iconRetryAccumMs or 0) + self.TICK_MS
 
     local ok, err = pcall(function()
-        self:writeHello()
+        if (self.helloAccumMs or 0) >= (self.HELLO_EVERY_MS or 60000) then
+            self.helloAccumMs = 0
+            self:writeHello()
+        end
         self:processCommands()
         local hasVehicles = self:missionHasVehicles()
         if not self.vehiclesPrimed and not hasVehicles then

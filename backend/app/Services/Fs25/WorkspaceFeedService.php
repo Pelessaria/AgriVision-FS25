@@ -184,7 +184,7 @@ final class WorkspaceFeedService
             $connector = ['vehicles' => [], 'basePath' => null];
             $connectorService = new ConnectorSnapshotService;
             try {
-                // Vehicles XML only — no per-icon FTP here.
+                // Local connector cache only — cron owns FTP.
                 $connector = $connectorService->readVehicles($workspace);
             } catch (Throwable) {
                 // Host connector files are optional enrichment.

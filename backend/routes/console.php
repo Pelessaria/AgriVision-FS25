@@ -65,6 +65,16 @@ Artisan::command('agrivision:sync-store-icons {--daemon : Keep pulling icons unt
     }
 })->purpose('Pull missing vehicle store icons over FTP');
 
+Schedule::call(function () {
+    $service = app(ConnectorSnapshotService::class);
+    foreach (Workspace::query()->cursor() as $workspace) {
+        $service->refreshLocalStateIfDue($workspace);
+    }
+})
+    ->everyMinute()
+    ->name('connector-state')
+    ->withoutOverlapping(2);
+
 Schedule::command('agrivision:sync-store-icons')
     ->everyFiveMinutes()
     ->withoutOverlapping(20)

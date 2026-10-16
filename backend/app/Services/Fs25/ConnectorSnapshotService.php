@@ -9,12 +9,10 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Pull AgriVision connector files from host modSettings.
+ * Pull AgriVision connector files from host modSettings into a local cache.
  *
- * Vehicles: cheap XML pull for inventory enrichment.
- * Store icons: read icons_manifest.xml, then RETR every missing or changed file
- * in one pass. A later sync only fetches the manifest and stops when the store
- * rows are unchanged. Never gate downloads on FTP LIST.
+ * Dashboard page loads never open FTP. Cron refreshes vehicles_full.xml and
+ * icons_manifest.xml, then RETR missing store icons. Never gate downloads on FTP LIST.
  */
 final class ConnectorSnapshotService
 {
@@ -25,6 +23,9 @@ final class ConnectorSnapshotService
 
     /** Seconds before the next pull while icons are still missing. */
     public const ICON_BACKLOG_INTERVAL_SEC = 15;
+
+    /** Seconds between vehicles/manifest FTP pulls when the cron is healthy. */
+    public const STATE_SYNC_INTERVAL_SEC = 60;
 
     /** Seconds to wait before retrying one DDS that did not become a PNG. */
     private const CONVERT_COOLDOWN_SEC = 120;
@@ -54,37 +55,140 @@ final class ConnectorSnapshotService
     }
 
     /**
+     * Local cache only — never opens FTP. Cron fills the files via refreshLocalState.
+     *
      * @return array{vehicles: list<array<string, mixed>>, basePath: string|null}
      */
     public function readVehicles(Workspace $workspace): array
     {
         $empty = ['vehicles' => [], 'basePath' => null];
+        $path = $this->localVehiclesPath($workspace);
+        if (! is_file($path)) {
+            return $empty;
+        }
+
+        try {
+            $vehicles = ConnectorVehiclesParser::parse((string) file_get_contents($path));
+        } catch (Throwable) {
+            return $empty;
+        }
+
         $access = $this->hostAccess($workspace);
-        if ($access === null) {
-            return $empty;
-        }
-
-        $base = $this->connectorBase($access);
-        if ($base === null) {
-            return $empty;
-        }
-
-        try {
-            $client = new HostFileClient($access);
-        } catch (Throwable) {
-            return $empty;
-        }
-
-        $vehicles = [];
-        try {
-            $vehicles = ConnectorVehiclesParser::parse($client->read($base.'/state/vehicles_full.xml'));
-        } catch (Throwable) {
-            // optional enrichment
-        }
+        $base = $access !== null ? $this->connectorBase($access) : null;
 
         return [
             'vehicles' => $vehicles,
             'basePath' => $base,
+        ];
+    }
+
+    /**
+     * @return array{changed: bool, skipped: string|null, detail: string|null, vehicles: bool, manifest: bool}
+     */
+    public function refreshLocalStateIfDue(Workspace $workspace, ?int $intervalSec = null): array
+    {
+        $intervalSec ??= self::STATE_SYNC_INTERVAL_SEC;
+        $marker = $this->stateSyncMarkerPath($workspace);
+        if ($intervalSec > 0 && is_file($marker)) {
+            $age = time() - (int) filemtime($marker);
+            if ($age >= 0 && $age < $intervalSec) {
+                return [
+                    'changed' => false,
+                    'skipped' => 'throttled',
+                    'detail' => null,
+                    'vehicles' => false,
+                    'manifest' => false,
+                ];
+            }
+        }
+
+        $result = $this->refreshLocalState($workspace);
+        if ($result['skipped'] === null || in_array($result['skipped'], ['unchanged'], true)) {
+            File::ensureDirectoryExists(dirname($marker));
+            File::put($marker, (string) time());
+        }
+
+        return $result;
+    }
+
+    /**
+     * FTP-pull vehicles_full.xml and icons_manifest.xml into storage.
+     * Ignores generation / writtenAtUtc when deciding whether the content changed.
+     *
+     * @return array{changed: bool, skipped: string|null, detail: string|null, vehicles: bool, manifest: bool}
+     */
+    public function refreshLocalState(Workspace $workspace): array
+    {
+        $access = $this->hostAccess($workspace);
+        if ($access === null) {
+            return [
+                'changed' => false,
+                'skipped' => 'no_host_access',
+                'detail' => 'HostAccess fehlt oder ohne Passwort',
+                'vehicles' => false,
+                'manifest' => false,
+            ];
+        }
+
+        $base = $this->connectorBase($access);
+        if ($base === null) {
+            return [
+                'changed' => false,
+                'skipped' => 'no_mod_settings',
+                'detail' => 'remote_mod_settings_path leer',
+                'vehicles' => false,
+                'manifest' => false,
+            ];
+        }
+
+        try {
+            $client = new HostFileClient($access);
+        } catch (Throwable $e) {
+            return [
+                'changed' => false,
+                'skipped' => 'connect_failed',
+                'detail' => $e->getMessage(),
+                'vehicles' => false,
+                'manifest' => false,
+            ];
+        }
+
+        $dir = $this->localStateDir($workspace);
+        File::ensureDirectoryExists($dir);
+        $vehiclesChanged = false;
+        $manifestChanged = false;
+        $detail = null;
+
+        try {
+            $remoteVehicles = $client->read($base.'/state/vehicles_full.xml');
+            $vehiclesChanged = $this->storeLocalIfChanged($this->localVehiclesPath($workspace), $remoteVehicles);
+        } catch (Throwable $e) {
+            $detail = $e->getMessage();
+        }
+
+        try {
+            $remoteManifest = $client->read($base.'/state/icons_manifest.xml');
+            $manifestChanged = $this->storeLocalIfChanged($this->localManifestPath($workspace), $remoteManifest);
+        } catch (Throwable $e) {
+            $detail = $detail ?? $e->getMessage();
+        }
+
+        if (! is_file($this->localVehiclesPath($workspace)) && ! is_file($this->localManifestPath($workspace))) {
+            return [
+                'changed' => false,
+                'skipped' => 'state_failed',
+                'detail' => $detail ?? 'Connector-State konnte nicht gelesen werden',
+                'vehicles' => false,
+                'manifest' => false,
+            ];
+        }
+
+        return [
+            'changed' => $vehiclesChanged || $manifestChanged,
+            'skipped' => ($vehiclesChanged || $manifestChanged) ? null : 'unchanged',
+            'detail' => $detail,
+            'vehicles' => $vehiclesChanged,
+            'manifest' => $manifestChanged,
         ];
     }
 
@@ -167,31 +271,23 @@ final class ConnectorSnapshotService
             return $this->syncResult(skipped: 'no_mod_settings', detail: 'remote_mod_settings_path leer');
         }
 
-        try {
-            $client = new HostFileClient($access);
-        } catch (Throwable $e) {
-            Log::warning('AgriVision icon sync connect failed', [
+        $state = $this->refreshLocalState($workspace);
+        if ($state['skipped'] === 'connect_failed' || $state['skipped'] === 'state_failed') {
+            Log::warning('AgriVision connector state refresh failed', [
                 'workspace' => $workspace->public_id,
-                'error' => $e->getMessage(),
+                'skipped' => $state['skipped'],
+                'detail' => $state['detail'],
             ]);
 
-            return $this->syncResult(skipped: 'connect_failed', detail: $e->getMessage());
+            return $this->syncResult(skipped: $state['skipped'] ?? 'state_failed', detail: $state['detail']);
         }
 
-        // Manifest-first: one XML read (same path that already works), then direct RETR.
-        // Do NOT require FTP LIST — empty NLST would skip all icon downloads forever.
-        try {
-            $manifestXml = $client->read($base.'/state/icons_manifest.xml');
-        } catch (Throwable $e) {
-            Log::warning('AgriVision icons_manifest read failed', [
-                'workspace' => $workspace->public_id,
-                'error' => $e->getMessage(),
-            ]);
-
-            return $this->syncResult(skipped: 'manifest_failed', detail: $e->getMessage());
+        $manifestPath = $this->localManifestPath($workspace);
+        if (! is_file($manifestPath)) {
+            return $this->syncResult(skipped: 'manifest_failed', detail: 'Lokales icons_manifest.xml fehlt');
         }
 
-        $entries = ConnectorIconsParser::parse($manifestXml);
+        $entries = ConnectorIconsParser::parse((string) file_get_contents($manifestPath));
         $jobs = [];
         foreach ($entries as $icon) {
             if (($icon['kind'] ?? 'store') !== 'store') {
@@ -221,13 +317,24 @@ final class ConnectorSnapshotService
 
         // Vehicles whose copy failed are absent from the manifest. Still ask for
         // icons/store/<storeKey>.dds so a later successful copy is picked up.
-        $jobs = $this->mergeVehicleStoreJobs($client, $base, $jobs);
+        $jobs = $this->mergeVehicleStoreJobs($workspace, $base, $jobs);
 
         if ($jobs === []) {
             return $this->syncResult(
                 skipped: 'no_icons',
                 detail: 'icons_manifest.xml ohne store-Einträge'
             );
+        }
+
+        try {
+            $client = new HostFileClient($access);
+        } catch (Throwable $e) {
+            Log::warning('AgriVision icon sync connect failed', [
+                'workspace' => $workspace->public_id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return $this->syncResult(skipped: 'connect_failed', detail: $e->getMessage());
         }
 
         return $this->downloadIconJobs($client, $workspace, array_values($jobs), $budgetSec);
@@ -237,10 +344,15 @@ final class ConnectorSnapshotService
      * @param  array<string, array{key: string, ext: string, remote: string}>  $jobs
      * @return array<string, array{key: string, ext: string, remote: string}>
      */
-    private function mergeVehicleStoreJobs(HostFileClient $client, string $base, array $jobs): array
+    private function mergeVehicleStoreJobs(Workspace $workspace, string $base, array $jobs): array
     {
+        $path = $this->localVehiclesPath($workspace);
+        if (! is_file($path)) {
+            return $jobs;
+        }
+
         try {
-            $vehicles = ConnectorVehiclesParser::parse($client->read($base.'/state/vehicles_full.xml'));
+            $vehicles = ConnectorVehiclesParser::parse((string) file_get_contents($path));
         } catch (Throwable) {
             return $jobs;
         }
@@ -635,6 +747,48 @@ final class ConnectorSnapshotService
     private function iconSyncMarkerPath(Workspace $workspace): string
     {
         return storage_path('app/connector/'.$workspace->public_id.'/icons/.last_sync');
+    }
+
+    private function stateSyncMarkerPath(Workspace $workspace): string
+    {
+        return storage_path('app/connector/'.$workspace->public_id.'/state/.last_sync');
+    }
+
+    private function localStateDir(Workspace $workspace): string
+    {
+        return storage_path('app/connector/'.$workspace->public_id.'/state');
+    }
+
+    private function localVehiclesPath(Workspace $workspace): string
+    {
+        return $this->localStateDir($workspace).'/vehicles_full.xml';
+    }
+
+    private function localManifestPath(Workspace $workspace): string
+    {
+        return $this->localStateDir($workspace).'/icons_manifest.xml';
+    }
+
+    private function storeLocalIfChanged(string $path, string $remoteXml): bool
+    {
+        $incoming = self::stableXmlFingerprint($remoteXml);
+        if (is_file($path)) {
+            $existing = self::stableXmlFingerprint((string) file_get_contents($path));
+            if ($existing === $incoming) {
+                return false;
+            }
+        }
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, $remoteXml);
+
+        return true;
+    }
+
+    public static function stableXmlFingerprint(string $xml): string
+    {
+        $normalized = preg_replace('/\s(generation|writtenAtUtc)="[^"]*"/', '', $xml) ?? $xml;
+
+        return hash('sha256', $normalized);
     }
 
     private function iconBacklogFlag(Workspace $workspace): string
