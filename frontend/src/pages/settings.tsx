@@ -10,6 +10,7 @@ import {
   type UpdateStatus,
 } from "../github-update"
 import { i18n } from "../i18n"
+import { apiScheduleStatus, type ScheduleStatus } from "../api"
 import { useStore } from "../store"
 import type { MailEncryption, MailSettings } from "../types"
 import { isEmail } from "../validate"
@@ -127,6 +128,7 @@ export function SettingsPage() {
   const [updateChecking, setUpdateChecking] = useState(false)
   const [updateApplying, setUpdateApplying] = useState(false)
   const [updateApplyError, setUpdateApplyError] = useState<string | null>(null)
+  const [schedule, setSchedule] = useState<ScheduleStatus | null>(null)
   const [demoInstalledSha] = useState<string | null>(() => {
     try {
       return localStorage.getItem("agrivision.installedSha")
@@ -162,6 +164,21 @@ export function SettingsPage() {
       store.pushToast("warn", t("settings.updateCheckFailed", { error: status.error }))
     }
   }
+
+  useEffect(() => {
+    if (tab !== "update" || !isAdmin || !liveMode) return
+    let cancelled = false
+    void apiScheduleStatus()
+      .then((row) => {
+        if (!cancelled) setSchedule(row)
+      })
+      .catch(() => {
+        if (!cancelled) setSchedule(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [tab, isAdmin, liveMode])
 
   useEffect(() => {
     if (tab !== "update" || !isAdmin) return
@@ -594,6 +611,24 @@ export function SettingsPage() {
           ) : null}
 
           <div className="update-meta">
+            {liveMode && schedule ? (
+              <div className="update-meta-row">
+                <span className="faint">{t("settings.cronLabel")}</span>
+                <strong>
+                  {schedule.state === "active"
+                    ? t("settings.cronActive")
+                    : schedule.state === "installed"
+                      ? t("settings.cronInstalled")
+                      : schedule.state === "stale"
+                        ? t("settings.cronStale", {
+                            time: schedule.lastRunAt
+                              ? new Date(schedule.lastRunAt).toLocaleString(i18n.language)
+                              : "–",
+                          })
+                        : t("settings.cronMissing")}
+                </strong>
+              </div>
+            ) : null}
             <div className="update-meta-row">
               <span className="faint">{t("settings.updateCurrent")}</span>
               <strong>{MANAGEMENT_VERSION}</strong>
@@ -623,6 +658,16 @@ export function SettingsPage() {
               </div>
             ) : null}
           </div>
+
+          {liveMode && schedule && (schedule.daemon === "stopped" || schedule.state === "missing") ? (
+            <p className="hint">
+              {schedule.daemon === "stopped"
+                ? t("settings.cronDaemonStopped")
+                : schedule.state === "missing"
+                  ? t("settings.cronMissingHint")
+                  : null}
+            </p>
+          ) : null}
 
           {updateStatus?.source !== "api" && !liveMode ? (
             <p className="hint">{t("settings.updateApplyDemo")}</p>

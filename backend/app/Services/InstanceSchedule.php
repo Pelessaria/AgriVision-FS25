@@ -73,6 +73,56 @@ final class InstanceSchedule
         return implode("\n", $kept).(count($kept) > 0 ? "\n" : '').$line."\n";
     }
 
+    public const HEARTBEAT_FRESH_SEC = 180;
+
+    public static function touchHeartbeat(): void
+    {
+        $path = self::heartbeatPath();
+        File::ensureDirectoryExists(dirname($path));
+        File::put($path, (string) time());
+    }
+
+    /**
+     * active: this install's cron ran in the last three minutes.
+     * installed: the entry exists, but no run has been seen yet.
+     * stale: the entry exists, and the last run is too old.
+     * missing: no entry for this directory.
+     *
+     * @return 'active'|'installed'|'stale'|'missing'
+     */
+    public static function classify(bool $installed, ?int $lastRunUnix, int $now): string
+    {
+        if ($lastRunUnix !== null && $lastRunUnix > 0 && ($now - $lastRunUnix) >= 0 && ($now - $lastRunUnix) <= self::HEARTBEAT_FRESH_SEC) {
+            return 'active';
+        }
+        if (! $installed) {
+            return 'missing';
+        }
+        if ($lastRunUnix === null || $lastRunUnix <= 0) {
+            return 'installed';
+        }
+
+        return 'stale';
+    }
+
+    /**
+     * @return array{state: string, installed: bool, active: bool, daemon: string, lastRunAt: string|null}
+     */
+    public static function status(): array
+    {
+        $installed = self::isInstalled();
+        $lastRunUnix = self::lastHeartbeat();
+        $state = self::classify($installed, $lastRunUnix, time());
+
+        return [
+            'state' => $state,
+            'installed' => $installed || $state === 'active',
+            'active' => $state === 'active',
+            'daemon' => self::daemonState(),
+            'lastRunAt' => $lastRunUnix !== null ? gmdate('c', $lastRunUnix) : null,
+        ];
+    }
+
     public static function isInstalled(): bool
     {
         $artisan = str_replace('\\', '/', base_path('artisan'));
@@ -246,6 +296,51 @@ final class InstanceSchedule
     private static function markerPath(): string
     {
         return storage_path('app/instance-schedule.cron');
+    }
+
+    private static function heartbeatPath(): string
+    {
+        return storage_path('app/instance-schedule.heartbeat');
+    }
+
+    private static function lastHeartbeat(): ?int
+    {
+        $path = self::heartbeatPath();
+        if (! is_file($path)) {
+            return null;
+        }
+        $raw = trim((string) file_get_contents($path));
+        if ($raw !== '' && ctype_digit($raw)) {
+            return (int) $raw;
+        }
+        $mtime = filemtime($path);
+
+        return $mtime === false ? null : (int) $mtime;
+    }
+
+    private static function daemonState(): string
+    {
+        if (PHP_OS_FAMILY === 'Windows' || self::shellDisabled()) {
+            return 'unknown';
+        }
+
+        foreach (['cron', 'crond'] as $unit) {
+            $out = shell_exec('systemctl is-active '.escapeshellarg($unit).' 2>/dev/null');
+            $out = is_string($out) ? trim($out) : '';
+            if ($out === 'active') {
+                return 'running';
+            }
+            if ($out === 'inactive' || $out === 'failed') {
+                return 'stopped';
+            }
+        }
+
+        $pids = shell_exec('pgrep -x cron 2>/dev/null || pgrep -x crond 2>/dev/null');
+        if (is_string($pids) && trim($pids) !== '') {
+            return 'running';
+        }
+
+        return 'unknown';
     }
 
     private static function runningAsRoot(): bool

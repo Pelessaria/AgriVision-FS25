@@ -36,6 +36,7 @@ Route::middleware('auth:web')->group(function () {
     Route::post('/workspaces/{workspace}/savegames/select', [WorkspaceController::class, 'selectSavegame']);
 
     Route::get('/system/update', [SystemUpdateController::class, 'status']);
+    Route::get('/system/schedule', [SystemUpdateController::class, 'schedule']);
     Route::get('/system/update/log', [SystemUpdateController::class, 'log']);
     Route::post('/system/update', [SystemUpdateController::class, 'apply']);
 });

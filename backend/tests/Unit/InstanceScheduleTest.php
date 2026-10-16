@@ -49,4 +49,16 @@ final class InstanceScheduleTest extends TestCase
         $this->assertStringNotContainsString('/var/www/hof-sued', $body);
         $this->assertStringEndsWith("\n", $body);
     }
+
+    public function test_classify_active_installed_stale_and_missing(): void
+    {
+        $now = 1_700_000_000;
+
+        $this->assertSame('active', InstanceSchedule::classify(true, $now - 30, $now));
+        $this->assertSame('active', InstanceSchedule::classify(false, $now - 60, $now));
+        $this->assertSame('installed', InstanceSchedule::classify(true, null, $now));
+        $this->assertSame('stale', InstanceSchedule::classify(true, $now - 600, $now));
+        $this->assertSame('missing', InstanceSchedule::classify(false, null, $now));
+        $this->assertSame('missing', InstanceSchedule::classify(false, $now - 600, $now));
+    }
 }

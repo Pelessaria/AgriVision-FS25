@@ -2,6 +2,7 @@
 
 use App\Models\Workspace;
 use App\Services\Fs25\ConnectorSnapshotService;
+use App\Services\InstanceSchedule;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -69,9 +70,26 @@ Schedule::command('agrivision:sync-store-icons')
     ->withoutOverlapping(20)
     ->appendOutputTo(storage_path('logs/icon-sync.log'));
 
+Schedule::call(fn () => InstanceSchedule::touchHeartbeat())
+    ->everyMinute()
+    ->name('scheduler-heartbeat');
+
 Artisan::command('agrivision:install-schedule', function () {
     $result = \App\Services\InstanceSchedule::install();
     $this->line($result['detail']);
 
     return $result['ok'] ? 0 : 1;
 })->purpose('Install this directory\'s scheduler cron without touching other installations');
+
+Artisan::command('agrivision:schedule-status', function () {
+    $status = \App\Services\InstanceSchedule::status();
+    $this->line(sprintf(
+        'state=%s installed=%s daemon=%s last=%s',
+        $status['state'],
+        $status['installed'] ? 'yes' : 'no',
+        $status['daemon'],
+        $status['lastRunAt'] ?? '-'
+    ));
+
+    return $status['active'] ? 0 : 1;
+})->purpose('Report whether this install\'s scheduler cron is installed and running');

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\InstanceSchedule;
 use App\Services\Update\GithubUpdateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,6 +35,15 @@ class SystemUpdateController extends Controller
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    public function schedule(Request $request): JsonResponse
+    {
+        if (! $this->isAdmin($request)) {
+            return response()->json(['message' => 'Forbidden.'], 403);
+        }
+
+        return response()->json(InstanceSchedule::status());
     }
 
     public function log(Request $request, GithubUpdateService $updates): JsonResponse

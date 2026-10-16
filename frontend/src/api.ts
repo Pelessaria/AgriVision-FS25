@@ -100,6 +100,18 @@ export async function apiLogout(): Promise<void> {
   await apiFetch("/api/logout", { method: "POST", body: "{}" })
 }
 
+export type ScheduleStatus = {
+  state: "active" | "installed" | "stale" | "missing"
+  installed: boolean
+  active: boolean
+  daemon: "running" | "stopped" | "unknown"
+  lastRunAt: string | null
+}
+
+export async function apiScheduleStatus(): Promise<ScheduleStatus> {
+  return apiFetch("/api/system/schedule")
+}
+
 export async function apiWorkspaces(): Promise<Workspace[]> {
   const data = await apiFetch<{ workspaces: Workspace[] }>("/api/workspaces")
   return data.workspaces
