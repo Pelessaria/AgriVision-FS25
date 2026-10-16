@@ -144,6 +144,9 @@ export function VehiclesPage() {
       )
   }, [farm, filter, i18n.language, id, query, vehicles])
 
+  const fleetHours = rows.reduce((sum, vehicle) => sum + (vehicle.hours ?? 0), 0)
+  const fleetMods = rows.filter((vehicle) => vehicle.modKey).length
+
   if (!workspace) return <MissingWorkspace />
   if (!allowed || !equipmentAccess) return <PermissionBlock />
 
@@ -177,6 +180,23 @@ export function VehiclesPage() {
             {syncing ? t("vehicles.syncing") : t("vehicles.sync")}
           </button>
           {syncNote ? <span className="faint">{syncNote}</span> : null}
+        </div>
+      </div>
+
+      <div className="stat-grid equip-summary">
+        <div className="stat-tile">
+          <span>{t("vehicles.fleet")}</span>
+          <strong>{rows.length.toLocaleString(i18n.language)}</strong>
+        </div>
+        <div className="stat-tile">
+          <span>{t("vehicles.fleetHours")}</span>
+          <strong>
+            {fleetHours.toLocaleString(i18n.language, { maximumFractionDigits: 0 })} h
+          </strong>
+        </div>
+        <div className="stat-tile">
+          <span>{t("vehicles.fleetMods")}</span>
+          <strong>{fleetMods.toLocaleString(i18n.language)}</strong>
         </div>
       </div>
 
@@ -234,21 +254,32 @@ export function VehiclesPage() {
                 className="equip-card"
                 onClick={() => navigate(`/w/${id}/equipment/${vehicle.id}`)}
               >
-                <span className="equip-card-media" aria-hidden="true">
+                <span className="equip-card-media">
                   {vehicle.iconUrl ? (
                     <img src={vehicle.iconUrl} alt="" onError={onIconError} />
                   ) : null}
                   <Tractor className={`icon icon-fallback${vehicle.iconUrl ? " is-hidden" : ""}`} />
+                  <span className="equip-card-cat">{t(categoryLabelKey(vehicle.category))}</span>
+                  <span className="equip-card-caption">
+                    {brand ? <span className="equip-card-brand">{brand}</span> : null}
+                    <strong className="equip-card-title">{title}</strong>
+                  </span>
                 </span>
                 <span className="equip-card-body">
-                  {brand ? <span className="equip-card-brand">{brand}</span> : null}
-                  <strong className="equip-card-title">{title}</strong>
-                  <span className="equip-card-cat">{t(categoryLabelKey(vehicle.category))}</span>
                   <span className="equip-card-facts">
-                    {hours ? <span>{hours}</span> : null}
-                    {farmName ? <span>{farmName}</span> : null}
+                    <span>
+                      <em>{t("vehicles.hours")}</em>
+                      <strong>{hours ?? t("unavailable")}</strong>
+                    </span>
+                    <span>
+                      <em>{t("vehicles.farm")}</em>
+                      <strong>{farmName ?? t("unavailable")}</strong>
+                    </span>
+                    <span>
+                      <em>{t("vehicles.modTitle")}</em>
+                      <strong>{modName ?? t("vehicles.baseGame")}</strong>
+                    </span>
                   </span>
-                  <span className="equip-card-mod">{modName ?? t("vehicles.baseGame")}</span>
                 </span>
               </button>
             )
