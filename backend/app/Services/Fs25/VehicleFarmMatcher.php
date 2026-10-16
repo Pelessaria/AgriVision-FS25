@@ -72,6 +72,7 @@ final class VehicleFarmMatcher
                 'filename' => $filename,
                 'storeKey' => $meta['storeKey'] ?? StoreKey::fromFilename(is_string($filename) ? $filename : null),
                 'modKey' => $meta['modKey'] ?? null,
+                'brand' => isset($meta['brand']) && is_string($meta['brand']) && $meta['brand'] !== '' ? $meta['brand'] : null,
             ];
         }
 
@@ -115,6 +116,7 @@ final class VehicleFarmMatcher
                 'filename' => null,
                 'storeKey' => null,
                 'modKey' => null,
+                'brand' => null,
             ];
         }
 

@@ -8,6 +8,7 @@ import { farmDisplayName } from "../farm-label"
 import { useWorkspaceRoute } from "../use-workspace"
 import { useStore } from "../store"
 import type { Vehicle, VehicleCategory } from "../types"
+import { modDisplayName, vehicleBrand, vehicleDisplayName } from "../vehicle-label"
 
 type EquipmentFilter = "all" | "tractor" | "trailer" | "tool" | "selfpropelled"
 
@@ -20,22 +21,6 @@ function matchesFilter(vehicle: Vehicle, filter: EquipmentFilter) {
 function categoryLabelKey(category: VehicleCategory) {
   if (category === "harvester") return "vehicles.selfpropelled"
   return `vehicles.${category}`
-}
-
-/** Engine often sends $l10n_shopItem_fooBar — show a readable fallback. */
-function vehicleDisplayName(name: string) {
-  const raw = name.trim()
-  const match = raw.match(/^\$l10n_(?:shopItem_)?(.+)$/i)
-  if (!match?.[1]) return raw
-  return match[1]
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .trim()
-}
-
-function modDisplayName(modKey: string | null | undefined) {
-  if (!modKey) return null
-  return modKey.replace(/^FS25_/i, "").replace(/_/g, " ")
 }
 
 function onIconError(event: SyntheticEvent<HTMLImageElement>) {
@@ -146,7 +131,13 @@ export function VehiclesPage() {
         if (!needle) return true
         const title = vehicleDisplayName(vehicle.name).toLocaleLowerCase()
         const mod = (vehicle.modKey ?? "").toLocaleLowerCase()
-        return title.includes(needle) || mod.includes(needle) || vehicle.name.toLocaleLowerCase().includes(needle)
+        const brand = (vehicleBrand(vehicle) ?? "").toLocaleLowerCase()
+        return (
+          title.includes(needle) ||
+          mod.includes(needle) ||
+          brand.includes(needle) ||
+          vehicle.name.toLocaleLowerCase().includes(needle)
+        )
       })
       .sort((a, b) =>
         vehicleDisplayName(a.name).localeCompare(vehicleDisplayName(b.name), i18n.language),
@@ -234,6 +225,7 @@ export function VehiclesPage() {
                 : `${vehicle.hours.toLocaleString(i18n.language, { maximumFractionDigits: 0 })} h`
             const modName = modDisplayName(vehicle.modKey)
             const title = vehicleDisplayName(vehicle.name)
+            const brand = vehicleBrand(vehicle)
 
             return (
               <button
@@ -249,6 +241,7 @@ export function VehiclesPage() {
                   <Tractor className={`icon icon-fallback${vehicle.iconUrl ? " is-hidden" : ""}`} />
                 </span>
                 <span className="equip-card-body">
+                  {brand ? <span className="equip-card-brand">{brand}</span> : null}
                   <strong className="equip-card-title">{title}</strong>
                   <span className="equip-card-cat">{t(categoryLabelKey(vehicle.category))}</span>
                   <span className="equip-card-facts">

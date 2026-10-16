@@ -12,7 +12,7 @@
 
 AgriVisionConnector = {}
 AgriVisionConnector.MOD_NAME = "FS25_AgriVisionConnector"
-AgriVisionConnector.VERSION = "0.1.2.8"
+AgriVisionConnector.VERSION = "0.1.2.9"
 AgriVisionConnector.SCHEMA = "1"
 AgriVisionConnector.TICK_MS = 5000
 AgriVisionConnector.HELLO_EVERY_MS = 60000
@@ -256,6 +256,7 @@ function AgriVisionConnector:collectVehiclesFullXml()
 
             local modKey = self:modKeyFromFilename(filename)
             local storeKey = self:storeKeyFromFilename(filename)
+            local brand = self:vehicleBrand(vehicle, filename)
             local imageSrc = self:vehicleStoreImage(vehicle, filename)
             if storeKey ~= nil and imageSrc ~= nil and self.pendingStoreIcons[storeKey] == nil then
                 self.pendingStoreIcons[storeKey] = {
@@ -290,6 +291,10 @@ function AgriVisionConnector:collectVehiclesFullXml()
             if modKey ~= nil then
                 table.insert(attrs, string.format('modKey="%s"', self:xmlEscape(modKey)))
                 table.insert(identity, "mk=" .. tostring(modKey))
+            end
+            if brand ~= nil and brand ~= "" then
+                table.insert(attrs, string.format('brand="%s"', self:xmlEscape(brand)))
+                table.insert(identity, "b=" .. tostring(brand))
             end
             if operatingTime ~= nil then
                 table.insert(attrs, string.format('operatingTime="%.2f"', operatingTime))
@@ -550,6 +555,52 @@ function AgriVisionConnector:tryCopyStoreIcon(storeKey, rawSrc)
         end
     end
     return false, nil, nil
+end
+
+function AgriVisionConnector:vehicleBrand(vehicle, filename)
+    local storeItem = nil
+    if vehicle ~= nil and vehicle.storeItem ~= nil then
+        storeItem = vehicle.storeItem
+    end
+    if storeItem == nil and g_storeManager ~= nil and g_storeManager.getItemByXMLFilename ~= nil and filename ~= nil and filename ~= "" then
+        local ok, item = pcall(function()
+            return g_storeManager:getItemByXMLFilename(filename)
+        end)
+        if ok and item ~= nil then
+            storeItem = item
+        end
+    end
+    if storeItem == nil then
+        return nil
+    end
+
+    local index = storeItem.brandIndex
+    if g_brandManager ~= nil and g_brandManager.getBrandByIndex ~= nil and type(index) == "number" then
+        local ok, brand = pcall(function()
+            return g_brandManager:getBrandByIndex(index)
+        end)
+        if ok and brand ~= nil then
+            local title = brand.title
+            if type(title) == "string" and title:sub(1, 6) == "$l10n_" and g_i18n ~= nil and g_i18n.getText ~= nil then
+                local okText, text = pcall(function()
+                    return g_i18n:getText(title)
+                end)
+                if okText and type(text) == "string" and text ~= "" and text ~= title then
+                    return text
+                end
+            end
+            if type(brand.name) == "string" and brand.name ~= "" then
+                return brand.name
+            end
+            if type(title) == "string" and title ~= "" and title:sub(1, 6) ~= "$l10n_" then
+                return title
+            end
+        end
+    end
+    if type(storeItem.brand) == "string" and storeItem.brand ~= "" then
+        return storeItem.brand
+    end
+    return nil
 end
 
 function AgriVisionConnector:vehicleStoreImage(vehicle, filename)

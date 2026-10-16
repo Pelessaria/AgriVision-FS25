@@ -7,31 +7,12 @@ import { farmDisplayName } from "../farm-label"
 import { useStore } from "../store"
 import { useWorkspaceRoute } from "../use-workspace"
 import type { Vehicle } from "../types"
+import { modDisplayName, modZipLabel, vehicleBrand, vehicleDisplayName } from "../vehicle-label"
 
 function positionOf(vehicle: Vehicle) {
   if (vehicle.x === null || vehicle.z === null) return null
   const format = (value: number) => value.toFixed(0)
   return `${format(vehicle.x)} / ${format(vehicle.z)}`
-}
-
-function vehicleDisplayName(name: string) {
-  const raw = name.trim()
-  const match = raw.match(/^\$l10n_(?:shopItem_)?(.+)$/i)
-  if (!match?.[1]) return raw
-  return match[1]
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/[_-]+/g, " ")
-    .trim()
-}
-
-function modZipLabel(modKey: string | null | undefined) {
-  if (!modKey) return null
-  return modKey.toLowerCase().endsWith(".zip") ? modKey : `${modKey}.zip`
-}
-
-function modDisplayName(modKey: string | null | undefined) {
-  if (!modKey) return null
-  return modKey.replace(/^FS25_/i, "").replace(/_/g, " ")
 }
 
 function shortFilename(path: string | null | undefined) {
@@ -81,6 +62,7 @@ export function VehicleDetailPage() {
   const modName = modDisplayName(modKey)
   const modZip = modZipLabel(modKey)
   const fileLabel = shortFilename(vehicle.filename)
+  const brand = vehicleBrand(vehicle)
   const farmLabel =
     farmName ?? (vehicle.farmId === null ? t("unavailable") : t("vehicles.farmId", { id: vehicle.farmId }))
   const hours =
@@ -94,45 +76,55 @@ export function VehicleDetailPage() {
         {t("vehicles.backToList")}
       </Link>
 
-      <div className="equip-detail-layout">
-        <div className="equip-detail-media" aria-hidden="true">
-          {vehicle.iconUrl ? <img src={vehicle.iconUrl} alt="" onError={onIconError} /> : null}
-          <Tractor className={`icon icon-fallback${vehicle.iconUrl ? " is-hidden" : ""}`} />
+      <article className="equip-sheet">
+        <div className="equip-sheet-main">
+          <div className="equip-sheet-media" aria-hidden="true">
+            {vehicle.iconUrl ? <img src={vehicle.iconUrl} alt="" onError={onIconError} /> : null}
+            <Tractor className={`icon icon-fallback${vehicle.iconUrl ? " is-hidden" : ""}`} />
+          </div>
+          <div className="equip-sheet-id">
+            {brand ? <p className="equip-sheet-brand">{brand}</p> : null}
+            <h1>{vehicleDisplayName(vehicle.name)}</h1>
+            <p className="equip-kicker">
+              {t(categoryKey)}
+              <span>·</span>
+              {t("vehicles.observed", { time: stamp(vehicle.observedAt, t("unavailable")) })}
+            </p>
+          </div>
         </div>
 
-        <div className="equip-detail-copy">
-          <p className="equip-kicker">
-            {t(categoryKey)}
-            <span>·</span>
-            {t("vehicles.observed", { time: stamp(vehicle.observedAt, t("unavailable")) })}
-          </p>
-          <h1>{vehicleDisplayName(vehicle.name)}</h1>
-
-          <div className="equip-stats">
-            <div>
-              <span>{t("vehicles.hours")}</span>
-              <strong>{hours}</strong>
-            </div>
-            <div>
-              <span>{t("vehicles.farm")}</span>
-              <strong>{farmLabel}</strong>
-            </div>
-            <div>
-              <span>{t("vehicles.position")}</span>
-              <strong>
-                <MissingValue text={positionOf(vehicle)} />
-              </strong>
-            </div>
-            {fill ? (
-              <div>
-                <span>{t("vehicles.fill")}</span>
-                <strong>{fill}</strong>
-              </div>
-            ) : null}
+        <dl className="equip-sheet-facts">
+          <div>
+            <dt>{t("vehicles.brand")}</dt>
+            <dd>
+              <MissingValue text={brand} />
+            </dd>
           </div>
+          <div>
+            <dt>{t("vehicles.hours")}</dt>
+            <dd>{hours}</dd>
+          </div>
+          <div>
+            <dt>{t("vehicles.farm")}</dt>
+            <dd>{farmLabel}</dd>
+          </div>
+          <div>
+            <dt>{t("vehicles.position")}</dt>
+            <dd>
+              <MissingValue text={positionOf(vehicle)} />
+            </dd>
+          </div>
+          {fill ? (
+            <div>
+              <dt>{t("vehicles.fill")}</dt>
+              <dd>{fill}</dd>
+            </div>
+          ) : null}
+        </dl>
 
+        <div className="equip-sheet-foot">
           {modKey ? (
-            <article className="equip-mod-card">
+            <>
               <span className="equip-mod-icon" aria-hidden="true">
                 {vehicle.modIconUrl ? <img src={vehicle.modIconUrl} alt="" onError={onIconError} /> : null}
                 <Package className={`icon icon-fallback${vehicle.modIconUrl ? " is-hidden" : ""}`} />
@@ -140,21 +132,22 @@ export function VehicleDetailPage() {
               <div className="equip-mod-copy">
                 <p className="equip-kicker">{t("vehicles.modTitle")}</p>
                 <strong>{modName}</strong>
-                <code>{modZip}</code>
-                {fileLabel ? <span className="equip-mod-file">{fileLabel}</span> : null}
+                <span className="equip-mod-meta">
+                  <code>{modZip}</code>
+                  {fileLabel ? <span>{fileLabel}</span> : null}
+                </span>
+                {vehicle.filename ? (
+                  <p className="equip-path" title={vehicle.filename}>
+                    {vehicle.filename}
+                  </p>
+                ) : null}
               </div>
-            </article>
+            </>
           ) : (
             <p className="equip-base">{t("vehicles.modBaseHint")}</p>
           )}
-
-          {vehicle.filename ? (
-            <p className="equip-path" title={vehicle.filename}>
-              {vehicle.filename}
-            </p>
-          ) : null}
         </div>
-      </div>
+      </article>
     </section>
   )
 }

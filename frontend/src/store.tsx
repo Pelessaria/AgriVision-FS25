@@ -193,6 +193,7 @@ function normalizeVehicle(vehicle: Vehicle): Vehicle {
     storeKey: vehicle.storeKey ?? null,
     modKey: vehicle.modKey ?? null,
     filename: vehicle.filename ?? null,
+    brand: vehicle.brand ?? null,
   }
 }
 

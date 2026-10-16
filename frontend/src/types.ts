@@ -156,6 +156,8 @@ export interface Vehicle {
   storeKey?: string | null
   /** Mod pack folder / zip stem (e.g. FS25_AutoDrive). */
   modKey?: string | null
+  /** Store brand (CLAAS, Fendt, …) when known. */
+  brand?: string | null
   /** Original vehicle XML path from savegame / connector. */
   filename?: string | null
   x: number | null

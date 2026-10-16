@@ -226,6 +226,12 @@ final class WorkspaceFeedService
                     'farmId' => $vehicle['farmId'] ?? null,
                     'storeKey' => $storeKey,
                     'modKey' => $modKey,
+                    'brand' => BrandName::resolve(
+                        isset($vehicle['brand']) && is_string($vehicle['brand']) ? $vehicle['brand'] : null,
+                        is_string($filename) ? $filename : null,
+                        is_string($modKey) ? $modKey : null,
+                        isset($vehicle['name']) && is_string($vehicle['name']) ? $vehicle['name'] : null,
+                    ),
                     'filename' => is_string($filename) && $filename !== '' ? $filename : null,
                     'iconUrl' => $iconUrl,
                     'modIconUrl' => $modIconUrl,

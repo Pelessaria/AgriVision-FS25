@@ -18,6 +18,7 @@ final class ConnectorVehiclesParser
      *   operatingTime: float|null,
      *   storeKey: string|null,
      *   modKey: string|null,
+     *   brand: string|null,
      *   x: float|null,
      *   y: float|null,
      *   z: float|null
@@ -42,6 +43,7 @@ final class ConnectorVehiclesParser
             $category = self::attr($attrBlob, 'category');
             $storeKey = self::attr($attrBlob, 'storeKey') ?? StoreKey::fromFilename($filename);
             $modKey = self::attr($attrBlob, 'modKey');
+            $brand = self::attr($attrBlob, 'brand');
             $operatingTime = self::floatAttr($attrBlob, 'operatingTime');
             $x = self::floatAttr($attrBlob, 'x');
             $y = self::floatAttr($attrBlob, 'y');
@@ -57,6 +59,7 @@ final class ConnectorVehiclesParser
                 'operatingTime' => $operatingTime,
                 'storeKey' => $storeKey,
                 'modKey' => $modKey,
+                'brand' => $brand,
                 'x' => $x,
                 'y' => $y,
                 'z' => $z,
