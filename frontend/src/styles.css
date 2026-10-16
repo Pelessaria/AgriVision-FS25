@@ -498,8 +498,8 @@ h1, h2, h3, p { margin: 0; }
   text-align: left;
   cursor: pointer;
   color: inherit;
-  background: #222a28;
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line-strong));
+  background: #161c1a;
+  border: 1px solid color-mix(in srgb, white 8%, transparent);
   border-radius: 16px;
   overflow: hidden;
   transition: border-color 0.15s ease, transform 0.15s ease;
@@ -526,7 +526,7 @@ h1, h2, h3, p { margin: 0; }
   content: "";
   position: absolute;
   inset: 0;
-  background: linear-gradient(90deg, rgba(16, 28, 22, 0.42) 0%, rgba(16, 28, 22, 0.08) 34%, transparent 58%);
+  background: linear-gradient(90deg, rgba(8, 12, 10, 0.62) 0%, rgba(8, 12, 10, 0.16) 40%, transparent 64%);
   pointer-events: none;
 }
 .equip-card-media {
@@ -536,8 +536,8 @@ h1, h2, h3, p { margin: 0; }
   min-height: 0;
   border-bottom: 1px solid var(--line);
   background:
-    radial-gradient(64% 70% at 86% 72%, color-mix(in srgb, var(--accent) 18%, #2a3830) 0%, transparent 72%),
-    linear-gradient(165deg, #2a3530 0%, #1c2622 100%);
+    radial-gradient(70% 80% at 84% 78%, #1a2822 0%, transparent 70%),
+    linear-gradient(165deg, #1a221f 0%, #101614 100%);
 }
 .equip-card-media img,
 .equip-sheet-media img {
@@ -573,8 +573,8 @@ h1, h2, h3, p { margin: 0; }
   padding: 4px 8px 4px 6px;
   border-radius: 8px;
   color: #f4f7f4;
-  background: color-mix(in srgb, #163024 62%, transparent);
-  border: 1px solid color-mix(in srgb, white 18%, transparent);
+  background: color-mix(in srgb, black 55%, transparent);
+  border: 1px solid color-mix(in srgb, white 12%, transparent);
   font-size: 0.68rem;
   font-weight: 600;
   letter-spacing: 0.06em;
@@ -616,7 +616,7 @@ h1, h2, h3, p { margin: 0; }
   gap: 0;
   min-width: 0;
   padding: 16px 18px 18px;
-  background: color-mix(in srgb, #2a3430 70%, var(--surface));
+  background: #141a18;
 }
 .equip-gauges {
   display: flex;
@@ -631,7 +631,7 @@ h1, h2, h3, p { margin: 0; }
   gap: 8px 12px;
   margin-top: 16px;
   padding-top: 16px;
-  border-top: 1px solid color-mix(in srgb, white 10%, transparent);
+  border-top: 1px solid color-mix(in srgb, white 8%, transparent);
 }
 .equip-sheet > .equip-gauges { margin: 18px 28px 0; }
 .equip-gauge {
@@ -654,9 +654,18 @@ h1, h2, h3, p { margin: 0; }
 .equip-gauge-value { fill: none; stroke-width: 3.4; }
 .equip-gauge-track { stroke: color-mix(in srgb, white 16%, transparent); }
 .equip-gauge-value { stroke-linecap: round; }
-.equip-gauge.is-fuel .equip-gauge-value { stroke: #6ed98a; }
-.equip-gauge.is-wear .equip-gauge-value { stroke: #e2b15a; }
-.equip-gauge.is-def .equip-gauge-value { stroke: #7eb6e8; }
+.equip-gauge.is-fuel .equip-gauge-value {
+  stroke: #3dff86;
+  filter: drop-shadow(0 0 3px #3dff86);
+}
+.equip-gauge.is-wear .equip-gauge-value {
+  stroke: #ffc14a;
+  filter: drop-shadow(0 0 3px #ffc14a);
+}
+.equip-gauge.is-def .equip-gauge-value {
+  stroke: #4ec4ff;
+  filter: drop-shadow(0 0 3px #4ec4ff);
+}
 .equip-gauge-pct {
   position: absolute;
   inset: 0;
